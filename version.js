@@ -10,9 +10,17 @@
  * e mostra as novidades depois de atualizar.
  * (Este arquivo também é lido pelo sw.js — não mude o formato.)
  */
-self.APP_VERSION = '1.3.0';
+self.APP_VERSION = '1.3.1';
 
 self.APP_CHANGELOG = [
+  {
+    versao: '1.3.1',
+    data: '2026-11-07',
+    itens: [
+      'Aviso na tela inicial da administradora quando alguém pede acesso',
+      'Liberar ou recusar o pedido direto da tela inicial'
+    ]
+  },
   {
     versao: '1.3.0',
     data: '2026-11-07',

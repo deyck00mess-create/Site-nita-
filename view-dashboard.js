@@ -1,5 +1,5 @@
 import { sb, q, state, isAdmin } from './db.js';
-import { esc, icon, money, hm, ymd, today, addDays, startOfMonth, endOfMonth, initials, firstName, fmtDayMonth, parseYmd, STATUS_LABEL } from './utils.js';
+import { esc, icon, toast, confirmDialog, money, hm, ymd, today, addDays, startOfMonth, endOfMonth, initials, firstName, fmtDayMonth, parseYmd, STATUS_LABEL } from './utils.js';
 import { setTopbar, go, install, refresh } from './app.js';
 import { editarNome } from './view-mais.js';
 import { AG_SELECT, openAgendamentoForm, openClienteForm, openLancamentoForm, openConcluir, whatsMenu, sendWhats } from './forms.js';
@@ -14,12 +14,13 @@ export async function renderDashboard(view, _p, alive) {
   const m0 = ymd(startOfMonth(now)), m1 = ymd(endOfMonth(now));
 
   const admin = isAdmin();
-  const [ags, amanha, lancMes, pendentes, clientes] = await Promise.all([
+  const [ags, amanha, lancMes, pendentes, clientes, aguardando] = await Promise.all([
     q(sb.from('agendamentos').select(AG_SELECT).gte('inicio', d0.toISOString()).lt('inicio', d1.toISOString()).order('inicio')),
     q(sb.from('agendamentos').select('id,lembrete_enviado,status,cliente:clientes(telefone)').gte('inicio', d1.toISOString()).lt('inicio', d2.toISOString()).in('status', ['agendado', 'confirmado'])),
     admin ? q(sb.from('lancamentos').select('tipo,valor,data_pagamento').eq('status', 'pago').gte('data_pagamento', m0).lte('data_pagamento', m1)) : [],
     admin ? q(sb.from('lancamentos').select('tipo,valor,vencimento').eq('status', 'pendente')) : [],
-    q(sb.from('clientes').select('id,nome,telefone,data_nascimento').eq('ativo', true).not('data_nascimento', 'is', null))
+    q(sb.from('clientes').select('id,nome,telefone,data_nascimento').eq('ativo', true).not('data_nascimento', 'is', null)),
+    admin ? q(sb.from('perfis').select('id,nome,email,created_at').eq('papel', 'pendente').order('created_at')) : []
   ]);
   if (!alive()) return;
 
@@ -79,6 +80,14 @@ export async function renderDashboard(view, _p, alive) {
       <button id="q-lc"><span class="q-ico">${icon('wallet')}</span>${admin ? 'Lançamento' : 'Recebimento'}</button>
     </div>
 
+    ${aguardando.length ? `<div class="card mt" style="border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)">
+      <div class="row" style="margin-bottom:10px"><div class="settings-ico">${icon('shield')}</div>
+        <div class="grow"><div class="li-title">${aguardando.length === 1 ? '1 pessoa pediu acesso' : `${aguardando.length} pessoas pediram acesso`}</div><div class="li-sub">Libere só quem você conhece</div></div></div>
+      ${aguardando.map((p) => `<div class="row" style="padding:8px 0;border-top:1px solid var(--border)">
+        <div class="grow" style="min-width:0"><div class="li-title ellipsis">${esc(p.nome || '')}</div><div class="li-sub ellipsis">${esc(p.email || '')}</div></div>
+        <button class="btn sm ghost" data-recusar="${p.id}">Recusar</button><button class="btn sm primary" data-liberar="${p.id}">Liberar</button></div>`).join('')}
+    </div>` : ''}
+
     ${lembretesPend || aPagarVenc.length ? `<div class="stack mt">
       ${lembretesPend ? `<button class="card row" id="go-lemb" style="cursor:pointer;text-align:left;width:100%;color:var(--text)">
         <div class="settings-ico" style="background:#25d36622;color:#1a9e4b">${icon('bell')}</div>
@@ -113,6 +122,14 @@ export async function renderDashboard(view, _p, alive) {
   view.querySelector('#q-cl').onclick = () => openClienteForm().then((c) => c && go(`/cliente/${c.id}`));
   view.querySelector('#q-lc').onclick = () => openLancamentoForm().then((r) => r && refresh());
   view.querySelector('#go-lemb')?.addEventListener('click', () => go('/lembretes'));
+  view.querySelectorAll('[data-liberar]').forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try { await q(sb.from('perfis').update({ papel: 'equipe' }).eq('id', b.dataset.liberar)); toast('Acesso liberado como Equipe ✓', 'success'); refresh(); } catch { b.disabled = false; }
+  }));
+  view.querySelectorAll('[data-recusar]').forEach((b) => (b.onclick = async () => {
+    if (!(await confirmDialog('Recusar este pedido de acesso? A pessoa continuará sem ver nenhum dado do sistema.', { ok: 'Recusar' }))) return;
+    try { await q(sb.from('perfis').delete().eq('id', b.dataset.recusar)); toast('Pedido recusado'); refresh(); } catch {}
+  }));
   view.querySelector('#btn-install')?.addEventListener('click', () => install.run());
   view.querySelector('#fix-nome')?.addEventListener('click', () => editarNome(state.perfil, refresh));
   view.querySelectorAll('[data-wa]').forEach((b) => (b.onclick = (e) => {
