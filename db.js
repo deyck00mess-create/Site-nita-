@@ -43,6 +43,7 @@ function friendlyError(e) {
   if (m.includes('invalid login')) return 'E-mail ou senha incorretos';
   if (m.includes('email not confirmed')) return 'Confirme seu e-mail antes de entrar (veja sua caixa de entrada)';
   if (m.includes('already registered')) return 'Este e-mail já tem cadastro';
+  if (m.includes('signups not allowed') || m.includes('signup is disabled')) return 'Novos cadastros estão desligados. Peça à administradora para criar seu acesso.';
   if (m.includes('password')) return 'A senha precisa ter pelo menos 6 caracteres';
   return e?.message || 'Algo deu errado';
 }

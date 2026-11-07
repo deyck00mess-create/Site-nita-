@@ -10,9 +10,14 @@
  * e mostra as novidades depois de atualizar.
  * (Este arquivo também é lido pelo sw.js — não mude o formato.)
  */
-self.APP_VERSION = '1.1.0';
+self.APP_VERSION = '1.1.1';
 
 self.APP_CHANGELOG = [
+  {
+    versao: '1.1.1',
+    data: '2026-11-07',
+    itens: ['Mensagem em português quando os cadastros estão desligados no Supabase']
+  },
   {
     versao: '1.1.0',
     data: '2026-11-07',
