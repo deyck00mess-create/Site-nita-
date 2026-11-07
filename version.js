@@ -10,9 +10,29 @@
  * e mostra as novidades depois de atualizar.
  * (Este arquivo também é lido pelo sw.js — não mude o formato.)
  */
-self.APP_VERSION = '1.3.1';
+self.APP_VERSION = '1.4.0';
 
 self.APP_CHANGELOG = [
+  {
+    versao: '1.4.0',
+    data: '2026-11-07',
+    itens: [
+      'Recibo de pagamento em PDF, com valor por extenso, para enviar pelo WhatsApp',
+      'Ficha de anamnese em PDF: baixar, imprimir ou enviar',
+      'Backup dos dados: planilha Excel e cópia completa (Mais → Backup dos dados)',
+      'Lembrete semanal de backup na tela inicial da administradora'
+    ]
+  },
+  {
+    versao: '1.3.2',
+    data: '2026-11-07',
+    itens: [
+      'Listas grandes (mais de 1000 clientes ou lançamentos) carregam completas',
+      'Pacotes: sessões canceladas não contam como usadas; pacotes vencidos não aparecem no agendamento',
+      'Aviso claro quando não há serviços cadastrados',
+      'Ícone do app disponível também sem internet'
+    ]
+  },
   {
     versao: '1.3.1',
     data: '2026-11-07',

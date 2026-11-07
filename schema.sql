@@ -457,3 +457,7 @@ $$;
 drop trigger if exists agendamentos_protege_preco on public.agendamentos;
 create trigger agendamentos_protege_preco before insert or update on public.agendamentos
   for each row execute function private.protege_preco_agendamento();
+
+-- v1.4.0 · Cidade e CPF/CNPJ da clínica (usados no recibo)
+alter table public.configuracoes add column if not exists cidade text;
+alter table public.configuracoes add column if not exists documento text;

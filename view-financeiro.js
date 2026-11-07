@@ -1,4 +1,4 @@
-import { sb, q, state, catById, profById, catByName } from './db.js';
+import { sb, q, qAll, state, catById, profById, catByName } from './db.js';
 import {
   esc, icon, money, ymd, today, parseYmd, addMonths, startOfMonth, endOfMonth, monthName, fmtDate,
   toast, downloadFile, FORMAS, debounce
@@ -49,7 +49,7 @@ export async function renderFinanceiro(view, params, alive) {
 async function resumo(body, ref, m0, m1, alive, nav) {
   const h0 = ymd(startOfMonth(addMonths(ref, -5)));
   const [pagos6, pendMes, vencidos, ags] = await Promise.all([
-    q(sb.from('lancamentos').select('tipo,valor,data_pagamento,forma_pagamento,categoria_id').eq('status', 'pago').gte('data_pagamento', h0).lte('data_pagamento', m1)),
+    qAll(() => sb.from('lancamentos').select('tipo,valor,data_pagamento,forma_pagamento,categoria_id').eq('status', 'pago').gte('data_pagamento', h0).lte('data_pagamento', m1).order('id')),
     q(sb.from('lancamentos').select('tipo,valor').eq('status', 'pendente').gte('vencimento', m0).lte('vencimento', m1)),
     q(sb.from('lancamentos').select('tipo,valor').eq('status', 'pendente').lt('vencimento', today())),
     q(sb.from('agendamentos').select('valor,desconto,status,servico:servicos(nome)').eq('status', 'concluido').gte('inicio', new Date(m0 + 'T00:00').toISOString()).lte('inicio', new Date(m1 + 'T23:59:59').toISOString()))
@@ -123,10 +123,12 @@ async function resumo(body, ref, m0, m1, alive, nav) {
 // ---------------------------------------------------------------------
 async function lancamentos(body, ref, m0, m1, params, alive, nav, reload) {
   const f = params.f || 'todos';
-  let query = sb.from('lancamentos').select('*, cliente:clientes(nome)').order('vencimento', { ascending: false }).order('created_at', { ascending: false });
-  if (f === 'vencidos') query = query.eq('status', 'pendente').lt('vencimento', today());
-  else query = query.or(`and(status.eq.pago,data_pagamento.gte.${m0},data_pagamento.lte.${m1}),and(status.eq.pendente,vencimento.gte.${m0},vencimento.lte.${m1})`);
-  let rows = await q(query);
+  const build = () => {
+    let query = sb.from('lancamentos').select('*, cliente:clientes(nome)').order('vencimento', { ascending: false }).order('created_at', { ascending: false }).order('id');
+    if (f === 'vencidos') return query.eq('status', 'pendente').lt('vencimento', today());
+    return query.or(`and(status.eq.pago,data_pagamento.gte.${m0},data_pagamento.lte.${m1}),and(status.eq.pendente,vencimento.gte.${m0},vencimento.lte.${m1})`);
+  };
+  let rows = await qAll(build);
   if (!alive()) return;
   if (f === 'receitas') rows = rows.filter((l) => l.tipo === 'receita');
   if (f === 'despesas') rows = rows.filter((l) => l.tipo === 'despesa');

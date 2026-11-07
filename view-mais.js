@@ -5,10 +5,11 @@ import {
 } from './utils.js';
 import { setTopbar, go, install, setTheme, getTheme, APP_VERSION, APP_CHANGELOG, showChangelog } from './app.js';
 import { msgVars } from './forms.js';
+import { carregarTudo, gerarPlanilha, gerarBackupJSON, marcarBackup, ultimoBackup, baixar } from './docs.js';
 
 export async function renderMais(view, params, alive) {
   const sub = params.sub;
-  const pages = { clinica, servicos, profissionais, mensagens, categorias, equipe };
+  const pages = { clinica, servicos, profissionais, mensagens, categorias, equipe, backup };
   if (sub && pages[sub]) {
     if (state.perfil?.papel !== 'admin') { toast('Área disponível só para a administradora'); location.replace('#/mais'); return; }
     return pages[sub](view, alive);
@@ -49,6 +50,7 @@ function menu(view) {
       ${admin ? item('#/mais/mensagens', 'whats', 'Mensagens do WhatsApp', 'Confirmação, lembrete, aniversário…') : ''}
       ${item('#/lembretes', 'bell', 'Central de lembretes', 'Enviar avisos de amanhã')}
       ${admin ? item('#/mais/categorias', 'tag', 'Categorias financeiras', `${state.categorias.length} categorias`) : ''}
+      ${admin ? item('#/mais/backup', 'download', 'Backup dos dados', ultimoBackup() ? `Último: ${new Date(ultimoBackup()).toLocaleDateString('pt-BR')}` : 'Nenhum backup feito ainda') : ''}
       ${admin ? item('#/mais/equipe', 'shield', 'Equipe e acessos', 'Liberar acesso de recepção/profissionais') : ''}
     </div></div>
 
@@ -97,6 +99,8 @@ async function clinica(view) {
       <label class="field"><span>Telefone / WhatsApp</span><input class="input" name="telefone" inputmode="tel" value="${esc(fmtPhone(c.telefone))}"></label>
       <label class="field"><span>Instagram</span><input class="input" name="instagram" placeholder="@suaclinica" value="${esc(c.instagram || '')}"></label>
       <label class="field full"><span>Endereço</span><input class="input" name="endereco" value="${esc(c.endereco || '')}"></label>
+      <label class="field"><span>Cidade (aparece no recibo)</span><input class="input" name="cidade" placeholder="Ex.: Belém - PA" value="${esc(c.cidade || '')}"></label>
+      <label class="field"><span>CPF ou CNPJ (aparece no recibo)</span><input class="input" name="documento" inputmode="numeric" value="${esc(c.documento || '')}"></label>
       <label class="field full"><span>Chave Pix (usada nas mensagens de cobrança)</span><input class="input" name="chave_pix" value="${esc(c.chave_pix || '')}"></label>
       <div class="full"><button class="btn primary">Salvar</button></div>
     </form>`;
@@ -325,4 +329,49 @@ export function editarNome(perfil, onDone) {
       form.onsubmit = (e) => { e.preventDefault(); salvar(); };
     }
   });
+}
+
+// ---------------------------------------------------------------------
+// Backup
+async function backup(view) {
+  setTopbar({ title: 'Backup dos dados', back: '/mais' });
+  const ult = ultimoBackup();
+  const hoje = new Date().toISOString().slice(0, 10);
+  view.innerHTML = `
+    <div class="card">
+      <div class="row"><div class="settings-ico" style="width:46px;height:46px">${icon('shield')}</div>
+        <div class="grow"><div class="li-title">Guarde uma cópia dos seus dados</div>
+        <div class="li-sub">${ult ? `Último backup neste aparelho: ${new Date(ult).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'Nenhum backup feito neste aparelho'}</div></div></div>
+      <p class="small" style="color:var(--text-2)">Recomendado <b>uma vez por semana</b>. Salve o arquivo no Google Drive, no e-mail ou no computador.</p>
+      <div class="stack mt">
+        <button class="btn primary block" id="bk-xlsx">${icon('download')} Baixar planilha Excel</button>
+        <button class="btn ghost block" id="bk-json">${icon('db')} Baixar backup completo (para restaurar)</button>
+      </div>
+      <div class="small muted mt" id="bk-status"></div>
+    </div>
+    <div class="section-title">O que vai em cada arquivo</div>
+    <div class="card pad-0"><div class="list">
+      <div class="list-item" style="cursor:default"><div class="settings-ico">${icon('list')}</div><div class="grow"><div class="li-title">Planilha Excel (.xlsx)</div>
+        <div class="li-sub">Abre no Excel, Google Planilhas ou celular. Abas: clientes, agendamentos, financeiro, anamneses, evoluções, pacotes, serviços e profissionais.</div></div></div>
+      <div class="list-item" style="cursor:default"><div class="settings-ico">${icon('db')}</div><div class="grow"><div class="li-title">Backup completo (.json)</div>
+        <div class="li-sub">Cópia exata de tudo, incluindo as assinaturas das fichas. Use para restaurar o sistema se precisar.</div></div></div>
+    </div></div>`;
+  const status = view.querySelector('#bk-status');
+  const rodar = async (tipo, btn) => {
+    const btns = view.querySelectorAll('#bk-xlsx, #bk-json'); btns.forEach((b) => (b.disabled = true));
+    try {
+      const D = await carregarTudo((t) => (status.textContent = t));
+      status.textContent = 'Montando o arquivo…';
+      const nome = (state.config.nome_clinica || 'Nita Reis').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-');
+      if (tipo === 'xlsx') baixar(await gerarPlanilha(D), `Backup-${nome}-${hoje}.xlsx`);
+      else baixar(gerarBackupJSON(D), `Backup-completo-${nome}-${hoje}.json`);
+      marcarBackup();
+      const tot = Object.entries(D).filter(([k]) => ['clientes', 'agendamentos', 'lancamentos', 'anamneses'].includes(k)).map(([k, v]) => `${v.length} ${k}`).join(' · ');
+      status.textContent = `✓ Backup baixado (${tot}).`;
+      toast('Backup baixado ✓', 'success');
+    } catch (e) { status.textContent = 'Não foi possível concluir o backup. Verifique a internet e tente de novo.'; }
+    btns.forEach((b) => (b.disabled = false));
+  };
+  view.querySelector('#bk-xlsx').onclick = (e) => rodar('xlsx', e.currentTarget);
+  view.querySelector('#bk-json').onclick = (e) => rodar('json', e.currentTarget);
 }

@@ -8,6 +8,7 @@ import {
   STATUS_LABEL, FORMAS, MSG_LABELS, COLORS
 } from './utils.js';
 import { ANAMNESE, TERMO, alertasAnamnese } from './anamnese-schema.js';
+import { abrirRecibo } from './docs.js';
 
 export const AG_SELECT = '*, cliente:clientes(id,nome,telefone,data_nascimento), servico:servicos(id,nome,cor,duracao_min), profissional:profissionais(id,nome,cor), pacote:pacotes(id,nome,total_sessoes)';
 const moneyVal = (v) => (Number(v) || 0).toFixed(2).replace('.', ',');
@@ -140,6 +141,11 @@ export function whatsMenu(ag, onDone) {
 // Agendamento (novo / editar)
 // ---------------------------------------------------------------------
 export function openAgendamentoForm({ agendamento = null, data = null, hora = null, cliente = null } = {}) {
+  if (!agendamento && !state.servicos.some((s) => s.ativo)) {
+    if (isAdmin()) { toast('Cadastre pelo menos um serviço antes de agendar'); location.hash = '#/mais/servicos'; }
+    else toast('Nenhum serviço cadastrado. Peça à administradora para cadastrar.', 'error');
+    return Promise.resolve(null);
+  }
   return new Promise((resolve) => {
     const ag = agendamento;
     const ini = ag ? new Date(ag.inicio) : null;
@@ -181,11 +187,12 @@ export function openAgendamentoForm({ agendamento = null, data = null, hora = nu
         const loadPacotes = async (c) => {
           pacoteWrap.classList.add('hidden');
           if (!c) return;
-          pacotes = await q(sb.from('pacotes').select('id,nome,total_sessoes,servico_id,agendamentos(count)').eq('cliente_id', c.id).eq('status', 'ativo'));
-          const ok = pacotes.filter((p) => (p.agendamentos?.[0]?.count || 0) < p.total_sessoes || p.id === ag?.pacote_id);
+          pacotes = (await q(sb.from('pacotes').select('id,nome,total_sessoes,servico_id,validade,agendamentos(id,status)').eq('cliente_id', c.id).eq('status', 'ativo')))
+            .map((p) => ({ ...p, usadas: (p.agendamentos || []).filter((a) => !['cancelado', 'faltou'].includes(a.status) && a.id !== ag?.id).length }));
+          const ok = pacotes.filter((p) => (p.usadas < p.total_sessoes && !(p.validade && p.validade < today())) || p.id === ag?.pacote_id);
           if (!ok.length) return;
           pacoteSel.innerHTML = '<option value="">Não usar pacote</option>' + ok.map((p) =>
-            `<option value="${p.id}" ${p.id === ag?.pacote_id ? 'selected' : ''}>${esc(p.nome)} (${p.agendamentos?.[0]?.count || 0}/${p.total_sessoes} usadas)</option>`).join('');
+            `<option value="${p.id}" ${p.id === ag?.pacote_id ? 'selected' : ''}>${esc(p.nome)} (${p.usadas}/${p.total_sessoes} usadas)</option>`).join('');
           pacoteWrap.classList.remove('hidden');
           if (!ag) { const match = ok.find((p) => p.servico_id === form.servico_id.value); if (match) { pacoteSel.value = match.id; form.valor.value = '0,00'; } }
         };
@@ -317,10 +324,11 @@ export async function openConcluir(ag) {
           const btn = ev.currentTarget;
           btn.disabled = true;
           const f = formData(el.querySelector('#cc-form'));
+          let lanc = null;
           try {
             if (String(f.status).startsWith('link:')) {
               // Vincula o recebimento já existente a este atendimento e à cliente
-              await q(sb.from('lancamentos').update({ agendamento_id: ag.id, cliente_id: ag.cliente_id, profissional_id: ag.profissional_id || null }).eq('id', f.status.slice(5)));
+              lanc = await q(sb.from('lancamentos').update({ agendamento_id: ag.id, cliente_id: ag.cliente_id, profissional_id: ag.profissional_id || null }).eq('id', f.status.slice(5)).select().single());
             } else if (f.valor > 0) {
               const exists = await q(sb.from('lancamentos').select('id').eq('agendamento_id', ag.id).limit(1));
               const row = {
@@ -329,20 +337,29 @@ export async function openConcluir(ag) {
                 status: f.status, vencimento: dia, data_pagamento: f.status === 'pago' ? today() : null,
                 cliente_id: ag.cliente_id, agendamento_id: ag.id, profissional_id: ag.profissional_id || null
               };
-              if (exists.length) await q(sb.from('lancamentos').update(row).eq('id', exists[0].id));
-              else await q(sb.from('lancamentos').insert(row));
+              lanc = exists.length
+                ? await q(sb.from('lancamentos').update(row).eq('id', exists[0].id).select().single())
+                : await q(sb.from('lancamentos').insert(row).select().single());
             }
             // Só marca como concluído depois que o financeiro foi gravado
             await q(sb.from('agendamentos').update({ status: 'concluido' }).eq('id', ag.id));
             if (f.evolucao) await q(sb.from('evolucoes').insert({ cliente_id: ag.cliente_id, agendamento_id: ag.id, data: ymd(new Date(ag.inicio)), texto: f.evolucao }));
             ok = true; m.close();
             toast('Atendimento concluído ✨', 'success');
-            if (ag.cliente?.telefone) {
+            const podeRecibo = lanc && lanc.status === 'pago';
+            if (ag.cliente?.telefone || podeRecibo) {
               const t = openModal({
-                title: 'Agradecer a cliente?',
-                body: `<p style="margin:0">Enviar mensagem de agradecimento para <b>${esc(firstName(ag.cliente.nome))}</b>?</p>`,
-                foot: `<button class="btn ghost" data-close>Não</button><button class="btn whats" id="ty">${icon('whats')} Enviar</button>`,
-                onMount(e2) { e2.querySelector('#ty').onclick = () => { sendWhats('agradecimento', ag); t.close(); }; }
+                title: 'Atendimento concluído ✨',
+                body: `<p style="margin-top:0">O que deseja enviar para <b>${esc(firstName(ag.cliente?.nome))}</b>?</p>
+                  <div class="stack">
+                    ${ag.cliente?.telefone ? `<button class="btn whats block" id="ty">${icon('whats')} Mensagem de agradecimento</button>` : ''}
+                    ${podeRecibo ? `<button class="btn soft block" id="rc">${icon('file')} Recibo em PDF (${esc(money(lanc.valor))})</button>` : ''}
+                  </div>`,
+                foot: `<button class="btn ghost" data-close>Agora não</button>`,
+                onMount(e2) {
+                  e2.querySelector('#ty')?.addEventListener('click', () => { sendWhats('agradecimento', ag); e2.querySelector('#ty').innerHTML = `${icon('check')} Agradecimento aberto no WhatsApp`; });
+                  e2.querySelector('#rc')?.addEventListener('click', () => { t.close(); abrirRecibo({ ...lanc, cliente: ag.cliente }); });
+                }
               });
             }
             resolve(true);
@@ -437,6 +454,7 @@ export function openLancamentoForm(lanc = null, defaults = {}) {
           <label class="field"><span>Observações</span><textarea class="input" name="observacoes" rows="2">${esc(l.observacoes || '')}</textarea></label>
         </form>`,
       foot: `${lanc && admin ? `<button class="btn danger" id="lc-del" style="flex:0 0 auto">${icon('trash')}</button>` : ''}
+        ${lanc && lanc.tipo === 'receita' && lanc.status === 'pago' ? `<button class="btn soft" id="lc-rec" style="flex:0 0 auto" aria-label="Recibo">${icon('file')} Recibo</button>` : ''}
         <button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="lc-save">Salvar</button>`,
       onMount(el) {
         const form = el.querySelector('#lc-form');
@@ -448,6 +466,7 @@ export function openLancamentoForm(lanc = null, defaults = {}) {
         }));
         form.status.onchange = () => { if (form.status.value === 'pago' && !form.data_pagamento.value) form.data_pagamento.value = today(); if (form.status.value === 'pendente') form.data_pagamento.value = ''; };
         form.repetir?.addEventListener('change', () => el.querySelector('#lc-n').classList.toggle('hidden', !form.repetir.value));
+        el.querySelector('#lc-rec')?.addEventListener('click', () => { abrirRecibo(lanc); });
         el.querySelector('#lc-del')?.addEventListener('click', async () => {
           if (!(await confirmDialog('Excluir este lançamento?', { ok: 'Excluir', danger: true }))) return;
           await q(sb.from('lancamentos').delete().eq('id', lanc.id));
@@ -479,7 +498,10 @@ export function openLancamentoForm(lanc = null, defaults = {}) {
                   status: i === 0 ? base.status : 'pendente', data_pagamento: i === 0 ? base.data_pagamento : null });
               }
               await q(sb.from('lancamentos').insert(rows));
-            } else await q(sb.from('lancamentos').insert(base));
+            } else {
+              const novo = await q(sb.from('lancamentos').insert(base).select().single());
+              if (novo?.tipo === 'receita' && novo.status === 'pago' && novo.cliente_id) setTimeout(() => ofertarRecibo(novo), 250);
+            }
             ok = true; m.close(); toast('Lançamento salvo', 'success'); resolve(true);
           } catch { btn.disabled = false; }
         };
@@ -674,3 +696,13 @@ export function printHtml(html) {
 }
 
 export { COLORS };
+
+// Depois de registrar um recebimento pago, oferece o recibo
+export function ofertarRecibo(lanc) {
+  const t = openModal({
+    title: 'Recebimento registrado ✓',
+    body: `<p style="margin:0">Deseja gerar o <b>recibo em PDF</b> de ${esc(money(lanc.valor))} para enviar à cliente?</p>`,
+    foot: `<button class="btn ghost" data-close>Agora não</button><button class="btn primary" id="rc">${icon('file')} Gerar recibo</button>`,
+    onMount(el) { el.querySelector('#rc').onclick = () => { t.close(); abrirRecibo(lanc); }; }
+  });
+}

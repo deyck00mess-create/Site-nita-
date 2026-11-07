@@ -1,7 +1,8 @@
-import { sb, q, state, isAdmin } from './db.js';
+import { sb, q, qAll, state, isAdmin } from './db.js';
 import { esc, icon, toast, confirmDialog, money, hm, ymd, today, addDays, startOfMonth, endOfMonth, initials, firstName, fmtDayMonth, parseYmd, STATUS_LABEL } from './utils.js';
 import { setTopbar, go, install, refresh } from './app.js';
 import { editarNome } from './view-mais.js';
+import { ultimoBackup } from './docs.js';
 import { AG_SELECT, openAgendamentoForm, openClienteForm, openLancamentoForm, openConcluir, whatsMenu, sendWhats } from './forms.js';
 
 export async function renderDashboard(view, _p, alive) {
@@ -19,7 +20,7 @@ export async function renderDashboard(view, _p, alive) {
     q(sb.from('agendamentos').select('id,lembrete_enviado,status,cliente:clientes(telefone)').gte('inicio', d1.toISOString()).lt('inicio', d2.toISOString()).in('status', ['agendado', 'confirmado'])),
     admin ? q(sb.from('lancamentos').select('tipo,valor,data_pagamento').eq('status', 'pago').gte('data_pagamento', m0).lte('data_pagamento', m1)) : [],
     admin ? q(sb.from('lancamentos').select('tipo,valor,vencimento').eq('status', 'pendente')) : [],
-    q(sb.from('clientes').select('id,nome,telefone,data_nascimento').eq('ativo', true).not('data_nascimento', 'is', null)),
+    qAll(() => sb.from('clientes').select('id,nome,telefone,data_nascimento').eq('ativo', true).not('data_nascimento', 'is', null).order('id')),
     admin ? q(sb.from('perfis').select('id,nome,email,created_at').eq('papel', 'pendente').order('created_at')) : []
   ]);
   if (!alive()) return;
@@ -87,6 +88,10 @@ export async function renderDashboard(view, _p, alive) {
         <div class="grow" style="min-width:0"><div class="li-title ellipsis">${esc(p.nome || '')}</div><div class="li-sub ellipsis">${esc(p.email || '')}</div></div>
         <button class="btn sm ghost" data-recusar="${p.id}">Recusar</button><button class="btn sm primary" data-liberar="${p.id}">Liberar</button></div>`).join('')}
     </div>` : ''}
+
+    ${admin && (!ultimoBackup() || Date.now() - new Date(ultimoBackup()) > 7 * 86400000) ? `<a class="card row mt" href="#/mais/backup" style="text-decoration:none;color:var(--text)">
+      <div class="settings-ico">${icon('shield')}</div>
+      <div class="grow"><div class="li-title">Faça o backup da semana</div><div class="li-sub">${ultimoBackup() ? `Último backup em ${new Date(ultimoBackup()).toLocaleDateString('pt-BR')}` : 'Nenhum backup feito ainda'} · leva poucos segundos</div></div>${icon('chevR')}</a>` : ''}
 
     ${lembretesPend || aPagarVenc.length ? `<div class="stack mt">
       ${lembretesPend ? `<button class="card row" id="go-lemb" style="cursor:pointer;text-align:left;width:100%;color:var(--text)">

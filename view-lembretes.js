@@ -1,4 +1,4 @@
-import { sb, q } from './db.js';
+import { sb, q, qAll } from './db.js';
 import { esc, icon, hm, ymd, addDays, fmtDateLong, fmtDate, fmtPhone, initials, toast } from './utils.js';
 import { setTopbar } from './app.js';
 import { AG_SELECT, sendWhats } from './forms.js';
@@ -66,8 +66,8 @@ export async function renderLembretes(view, params, alive) {
 
   // Clientes sem atendimento há mais de 45 dias
   const [clientes, ags] = await Promise.all([
-    q(sb.from('clientes').select('id,nome,telefone').eq('ativo', true).not('telefone', 'is', null)),
-    q(sb.from('agendamentos').select('cliente_id,inicio,status').in('status', ['concluido', 'agendado', 'confirmado']).gte('inicio', addDays(d0, -365).toISOString()))
+    qAll(() => sb.from('clientes').select('id,nome,telefone').eq('ativo', true).not('telefone', 'is', null).order('id')),
+    qAll(() => sb.from('agendamentos').select('cliente_id,inicio,status').in('status', ['concluido', 'agendado', 'confirmado']).gte('inicio', addDays(d0, -365).toISOString()).order('id'))
   ]);
   if (!alive()) return;
   const ultimo = {}; const futuro = new Set();

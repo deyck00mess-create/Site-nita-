@@ -91,7 +91,8 @@ export function alertasAnamnese(dados = {}) {
     for (const c of s.campos) {
       if (c.type === 'yn' && dados[c.id] === 'sim') {
         const det = dados[c.id + '_det'];
-        out.push(det ? `${c.label}: ${det}` : c.label);
+        const lab = c.label.replace(/\?$/, '');
+        out.push(det ? `${lab}: ${det}` : lab);
       }
     }
   }

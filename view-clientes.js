@@ -1,4 +1,4 @@
-import { sb, q, state, isAdmin } from './db.js';
+import { sb, q, qAll, state, isAdmin } from './db.js';
 import {
   esc, icon, money, fmtDate, fmtPhone, initials, age, hm, today, parseYmd, onlyDigits, debounce, toast,
   confirmDialog, openModal, formData, STATUS_LABEL, FORMAS
@@ -9,6 +9,7 @@ import {
   openPacoteForm, openLancamentoForm, sendWhats, whatsMenu
 } from './forms.js';
 import { alertasAnamnese } from './anamnese-schema.js';
+import { abrirAnamnesePDF, abrirRecibo } from './docs.js';
 
 // ---------------------------------------------------------------------
 // Lista de clientes
@@ -19,7 +20,7 @@ export async function renderClientes(view, params, alive) {
   document.getElementById('tb-new').onclick = novo;
   const filtro = params.f || 'todas';
 
-  const rows = await q(sb.from('clientes').select('id,nome,telefone,data_nascimento,ativo,created_at').order('nome').range(0, 4999));
+  const rows = await qAll(() => sb.from('clientes').select('id,nome,telefone,data_nascimento,ativo,created_at').order('nome').order('id'));
   if (!alive()) return;
   const mes = new Date().getMonth();
 
@@ -173,13 +174,13 @@ export async function renderCliente(view, params, alive) {
         ${anams.length ? anams.map((an, i) => `
           <div class="card ${i ? 'mt' : ''}">
             <div class="card-title"><h3>Ficha de ${fmtDate(an.data)} ${i === 0 ? '<span class="chip concluido">mais recente</span>' : ''}</h3>
-              <div class="row" style="gap:6px"><button class="icon-btn" data-print="${an.id}" aria-label="Imprimir">${icon('print')}</button>
+              <div class="row" style="gap:6px"><button class="btn sm soft" data-pdf="${an.id}">${icon('file')} PDF</button>
               <button class="icon-btn" data-edit="${an.id}" aria-label="Editar">${icon('edit')}</button></div></div>
             ${i === 0 ? anamneseHtml(an, c, { alertas: false }) : `<button class="btn sm ghost" data-show="${an.id}">Ver ficha completa</button><div data-full="${an.id}"></div>`}
           </div>`).join('') : `<div class="card empty">${icon('file')}<p>Nenhuma ficha preenchida.</p></div>`}`;
       body.querySelector('#an-new').onclick = () => openAnamneseForm(c).then((r) => r && reload());
       body.querySelectorAll('[data-edit]').forEach((b) => (b.onclick = () => openAnamneseForm(c, anams.find((a) => a.id === b.dataset.edit)).then((r) => r && reload())));
-      body.querySelectorAll('[data-print]').forEach((b) => (b.onclick = () => printHtml(anamneseHtml(anams.find((a) => a.id === b.dataset.print), c, { print: true }))));
+      body.querySelectorAll('[data-pdf]').forEach((b) => (b.onclick = () => abrirAnamnesePDF(anams.find((a) => a.id === b.dataset.pdf), c)));
       body.querySelectorAll('[data-show]').forEach((b) => (b.onclick = () => { body.querySelector(`[data-full="${b.dataset.show}"]`).innerHTML = anamneseHtml(anams.find((a) => a.id === b.dataset.show), c); b.remove(); }));
     }
     if (t === 'evolucao') {
@@ -234,10 +235,12 @@ export async function renderCliente(view, params, alive) {
             <div class="grow"><div class="li-title">${esc(l.descricao)}</div>
             <div class="li-sub">${fmtDate(l.status === 'pago' ? l.data_pagamento : l.vencimento)}${l.forma_pagamento ? ` · ${FORMAS[l.forma_pagamento]}` : ''}${l.parcela ? ` · parcela ${l.parcela}` : ''}</div></div>
             <div style="text-align:right"><div class="money-in num">${money(l.valor)}</div><span class="chip ${l.status}">${l.status}</span></div>
+            ${l.status === 'pago' ? `<button class="icon-btn" data-rec="${l.id}" aria-label="Recibo" title="Recibo em PDF">${icon('file')}</button>` : ''}
           </div>`).join('')}</div>` : `<div class="empty">${icon('wallet')}<p>Nenhum lançamento.</p></div>`}</div>`;
       body.querySelector('#lc-new').onclick = () => openLancamentoForm(null, { cliente_id: id, descricao: `Atendimento — ${c.nome}` }).then((r) => r && reload());
       body.querySelector('#cobrar')?.addEventListener('click', () => sendWhats('cobranca', { cliente: c }, { valor: devendo, servico: 'atendimentos anteriores' }));
       body.querySelectorAll('[data-l]').forEach((r) => (r.onclick = () => openLancamentoForm(lancs.find((l) => l.id === r.dataset.l)).then((x) => x && reload())));
+      body.querySelectorAll('[data-rec]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); abrirRecibo(lancs.find((l) => l.id === b.dataset.rec)); }));
     }
     if (t === 'dados') {
       const kv = [['Nome', c.nome], ['WhatsApp', fmtPhone(c.telefone)], ['E-mail', c.email], ['CPF', c.cpf], ['Nascimento', c.data_nascimento ? `${fmtDate(c.data_nascimento)} (${age(c.data_nascimento)} anos)` : ''],

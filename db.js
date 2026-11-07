@@ -50,6 +50,17 @@ function friendlyError(e) {
 }
 export { friendlyError };
 
+// Busca todas as linhas em páginas de 1000 (limite do Supabase por consulta).
+// "build" deve criar a consulta do zero, com ordenação estável.
+export async function qAll(build, page = 1000) {
+  let out = [];
+  for (let i = 0; ; i += page) {
+    const rows = await q(build().range(i, i + page - 1));
+    out = out.concat(rows || []);
+    if (!rows || rows.length < page) return out;
+  }
+}
+
 // ---------- Estado em memória ----------
 export const state = {
   user: null,
