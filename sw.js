@@ -1,12 +1,13 @@
 // Service worker: deixa o app instalável e abrindo rápido (mesmo com internet fraca).
-// Ao publicar uma nova versão, aumente o número abaixo.
-const VERSION = 'nr-v1.0.0';
+// A versão vem de version.js — para publicar atualização, mude só lá.
+importScripts('./version.js');
+const VERSION = 'nr-v' + self.APP_VERSION;
 const SHELL = [
-  './', './index.html', './manifest.webmanifest', './css/styles.css',
-  './js/config.js', './js/app.js', './js/db.js', './js/utils.js', './js/forms.js', './js/anamnese-schema.js',
-  './js/views/dashboard.js', './js/views/agenda.js', './js/views/clientes.js', './js/views/financeiro.js',
-  './js/views/mais.js', './js/views/lembretes.js',
-  './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
+  './', './index.html', './manifest.webmanifest', './styles.css',
+  './version.js', './config.js', './app.js', './db.js', './utils.js', './forms.js', './anamnese-schema.js',
+  './view-dashboard.js', './view-agenda.js', './view-clientes.js', './view-financeiro.js',
+  './view-mais.js', './view-lembretes.js',
+  './icon-192.png', './icon-512.png', './apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (e) => {
