@@ -22,15 +22,14 @@ export async function renderFinanceiro(view, params, alive) {
   document.getElementById('tb-new').onclick = () => openLancamentoForm().then((r) => r && reload());
 
   view.innerHTML = `
-    <div class="day-nav">
-      <button class="icon-btn" id="m-prev" aria-label="Mês anterior">${icon('chevL')}</button>
-      <div class="day-label"><b>${esc(monthName(ref))}</b></div>
-      <button class="icon-btn" id="m-next" aria-label="Próximo mês">${icon('chevR')}</button>
+    <div class="segmented mb" role="tablist">
+      ${[['resumo', 'Resumo'], ['lancamentos', 'Lançamentos'], ['comissoes', 'Comissões']].map(([k, v]) =>
+        `<button role="tab" aria-selected="${aba === k}" class="${aba === k ? 'active' : ''}" data-aba="${k}">${v}</button>`).join('')}
     </div>
-    <div class="tabs">
-      <button class="tab ${aba === 'resumo' ? 'active' : ''}" data-aba="resumo">Resumo</button>
-      <button class="tab ${aba === 'lancamentos' ? 'active' : ''}" data-aba="lancamentos">Lançamentos</button>
-      <button class="tab ${aba === 'comissoes' ? 'active' : ''}" data-aba="comissoes">Comissões</button>
+    <div class="month-nav mb">
+      <button class="icon-btn" id="m-prev" aria-label="Mês anterior">${icon('chevL')}</button>
+      <b>${esc(monthName(ref))}</b>
+      <button class="icon-btn" id="m-next" aria-label="Próximo mês">${icon('chevR')}</button>
     </div>
     <div id="fin-body"><div class="empty">Carregando…</div></div>
     <button class="fab" id="fab" aria-label="Novo lançamento">${icon('plus')}</button>`;
@@ -122,29 +121,46 @@ async function resumo(body, ref, m0, m1, alive, nav) {
 
 // ---------------------------------------------------------------------
 async function lancamentos(body, ref, m0, m1, params, alive, nav, reload) {
-  const f = params.f || 'todos';
-  const build = () => {
-    let query = sb.from('lancamentos').select('*, cliente:clientes(nome)').order('vencimento', { ascending: false }).order('created_at', { ascending: false }).order('id');
-    if (f === 'vencidos') return query.eq('status', 'pendente').lt('vencimento', today());
-    return query.or(`and(status.eq.pago,data_pagamento.gte.${m0},data_pagamento.lte.${m1}),and(status.eq.pendente,vencimento.gte.${m0},vencimento.lte.${m1})`);
-  };
-  let rows = await qAll(build);
+  // Compatibilidade com links antigos
+  const alias = { receitas: 'recebido', despesas: 'pago' };
+  const f = alias[params.f] || params.f || 'todos';
+  const [doMes, vencidos] = await Promise.all([
+    qAll(() => sb.from('lancamentos').select('*, cliente:clientes(nome)')
+      .or(`and(status.eq.pago,data_pagamento.gte.${m0},data_pagamento.lte.${m1}),and(status.eq.pendente,vencimento.gte.${m0},vencimento.lte.${m1})`)
+      .order('vencimento', { ascending: false }).order('created_at', { ascending: false }).order('id')),
+    qAll(() => sb.from('lancamentos').select('*, cliente:clientes(nome)').eq('status', 'pendente').lt('vencimento', today())
+      .order('vencimento', { ascending: false }).order('id'))
+  ]);
   if (!alive()) return;
-  if (f === 'receitas') rows = rows.filter((l) => l.tipo === 'receita');
-  if (f === 'despesas') rows = rows.filter((l) => l.tipo === 'despesa');
-  if (f === 'receber') rows = rows.filter((l) => l.tipo === 'receita' && l.status === 'pendente');
-  if (f === 'pagar') rows = rows.filter((l) => l.tipo === 'despesa' && l.status === 'pendente');
 
-  const filtros = [['todos', 'Todos'], ['receitas', 'Receitas'], ['despesas', 'Despesas'], ['receber', 'A receber'], ['pagar', 'A pagar'], ['vencidos', 'Vencidos']];
+  const grupos = {
+    recebido: { label: 'Recebido', cls: 'in', test: (l) => l.tipo === 'receita' && l.status === 'pago' },
+    pago: { label: 'Pago', cls: 'out', test: (l) => l.tipo === 'despesa' && l.status === 'pago' },
+    receber: { label: 'A receber', cls: 'warn', test: (l) => l.tipo === 'receita' && l.status === 'pendente' },
+    pagar: { label: 'A pagar', cls: 'out', test: (l) => l.tipo === 'despesa' && l.status === 'pendente' }
+  };
+  let rows = f === 'vencidos' ? vencidos : grupos[f] ? doMes.filter(grupos[f].test) : doMes;
+  const vRec = vencidos.filter((l) => l.tipo === 'receita'), vPag = vencidos.filter((l) => l.tipo === 'despesa');
+
   body.innerHTML = `
-    <div class="tabs">${filtros.map(([k, v]) => `<button class="tab ${k === f ? 'active' : ''}" data-f="${k}">${v}</button>`).join('')}</div>
+    <div class="ftiles mb">
+      ${Object.entries(grupos).map(([k, g]) => {
+        const it = doMes.filter(g.test);
+        return `<button class="ftile ${g.cls} ${f === k ? 'active' : ''}" data-f="${k}" aria-pressed="${f === k}">
+          <span class="ft-label">${g.label}</span><span class="ft-value num">${money(sum(it))}</span><span class="ft-sub">${it.length} lançamento${it.length === 1 ? '' : 's'}</span></button>`;
+      }).join('')}
+    </div>
+    ${vencidos.length ? `<button class="venc-banner mb ${f === 'vencidos' ? 'active' : ''}" data-f="vencidos">
+      ${icon('alert')}<span class="grow"><b>${vencidos.length} vencido${vencidos.length > 1 ? 's' : ''}</b>
+      ${vRec.length ? ` · ${money(sum(vRec))} a receber` : ''}${vPag.length ? ` · ${money(sum(vPag))} a pagar` : ''}</span>
+      <span class="small">${f === 'vencidos' ? 'Mostrando' : 'Ver'}</span></button>` : ''}
     <div class="row mb" style="gap:8px">
-      <div class="search grow">${icon('search')}<input type="search" id="busca" placeholder="Buscar lançamento"></div>
+      <div class="search grow">${icon('search')}<input type="search" id="busca" placeholder="Buscar por descrição, cliente…"></div>
       <button class="icon-btn" id="csv" aria-label="Exportar planilha" title="Exportar CSV">${icon('download')}</button>
     </div>
     <div class="row between small mb" id="totais"></div>
     <div id="lista"></div>`;
-  body.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => nav({ f: b.dataset.f })));
+  body.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => nav({ f: b.dataset.f === f ? '' : b.dataset.f })));
 
   const lista = body.querySelector('#lista');
   const busca = body.querySelector('#busca');
@@ -152,8 +168,12 @@ async function lancamentos(body, ref, m0, m1, params, alive, nav, reload) {
     const t = busca.value.trim().toLowerCase();
     const list = t ? rows.filter((l) => `${l.descricao} ${l.cliente?.nome || ''} ${catById(l.categoria_id)?.nome || ''}`.toLowerCase().includes(t)) : rows;
     const ent = sum(list.filter((l) => l.tipo === 'receita')), sai = sum(list.filter((l) => l.tipo === 'despesa'));
-    body.querySelector('#totais').innerHTML = `<span>${list.length} lançamento(s)</span><span><span class="money-in">+${money(ent)}</span> · <span class="money-out">−${money(sai)}</span></span>`;
-    if (!list.length) { lista.innerHTML = `<div class="card empty">${icon('wallet')}<p>Nenhum lançamento.</p></div>`; return; }
+    const nomeFiltro = f === 'vencidos' ? 'Vencidos' : grupos[f]?.label;
+    body.querySelector('#totais').innerHTML = `<span>${nomeFiltro ? `<b>${nomeFiltro}</b> · ` : ''}${list.length} lançamento${list.length === 1 ? '' : 's'}${nomeFiltro ? ' · <button class="link-btn small" id="limpar" style="padding:0">mostrar todos</button>' : ''}</span>
+      <span><span class="money-in">+${money(ent)}</span> · <span class="money-out">−${money(sai)}</span></span>`;
+    body.querySelector('#limpar')?.addEventListener('click', () => nav({ f: '' }));
+    if (!list.length) { lista.innerHTML = `<div class="card empty">${icon('wallet')}<p>${t ? 'Nada encontrado nessa busca.' : nomeFiltro ? `Nenhum lançamento em “${nomeFiltro}” neste mês.` : 'Nenhum lançamento neste mês.'}</p><button class="btn soft" id="vazio-novo">${icon('plus')} Novo lançamento</button></div>`;
+      lista.querySelector('#vazio-novo').onclick = () => openLancamentoForm().then((r) => r && reload()); return; }
     const groups = {};
     list.forEach((l) => { const d = l.status === 'pago' ? l.data_pagamento : l.vencimento; (groups[d] ||= []).push(l); });
     lista.innerHTML = Object.keys(groups).sort().reverse().map((d) => `

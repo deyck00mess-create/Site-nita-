@@ -10,9 +10,18 @@
  * e mostra as novidades depois de atualizar.
  * (Este arquivo também é lido pelo sw.js — não mude o formato.)
  */
-self.APP_VERSION = '1.4.0';
+self.APP_VERSION = '1.4.1';
 
 self.APP_CHANGELOG = [
+  {
+    versao: '1.4.1',
+    data: '2026-11-07',
+    itens: [
+      'Financeiro mais prático: Resumo, Lançamentos e Comissões em uma única chave',
+      'Cartões com os totais do mês (Recebido, Pago, A receber, A pagar) que também filtram a lista',
+      'Aviso em destaque quando há lançamentos vencidos'
+    ]
+  },
   {
     versao: '1.4.0',
     data: '2026-11-07',
