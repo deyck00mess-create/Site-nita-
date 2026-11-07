@@ -45,7 +45,9 @@ function friendlyError(e) {
   if (m.includes('already registered')) return 'Este e-mail já tem cadastro';
   if (m.includes('apenas a administradora') || m.includes('pelo menos uma administradora')) return e.message;
   if (m.includes('signups not allowed') || m.includes('signup is disabled')) return 'Novos cadastros estão desligados. Peça à administradora para criar seu acesso.';
-  if (m.includes('password')) return 'A senha precisa ter pelo menos 6 caracteres';
+  if (m.includes('pwned') || m.includes('leaked') || m.includes('compromised')) return 'Essa senha apareceu em vazamentos na internet. Escolha outra.';
+  if (m.includes('password')) return 'Senha fraca: use pelo menos 8 caracteres, com letras e números';
+  if (m.includes('violates check constraint')) return 'Dado inválido ou grande demais. Revise o que foi digitado.';
   return e?.message || 'Algo deu errado';
 }
 export { friendlyError };

@@ -12,6 +12,11 @@ import { renderLembretes } from './view-lembretes.js';
 
 const app = document.getElementById('app');
 
+// Impede que o app seja aberto dentro de outro site (clickjacking)
+if (window.top !== window.self) { try { window.top.location = window.location.href; } catch { document.documentElement.innerHTML = ''; } }
+// Botões "Tentar de novo" (sem código inline, compatível com a política de segurança)
+document.addEventListener('click', (e) => { if (e.target.closest('[data-reload]')) location.reload(); });
+
 // ---------- Tema ----------
 export function setTheme(t) {
   localStorage.setItem('nr_tema', t);
@@ -195,7 +200,7 @@ async function router() {
     await route.view(view, { ...params, id: m?.[1], sub: m?.[1] }, () => token === renderToken);
   } catch (e) {
     console.error(e);
-    if (token === renderToken) view.innerHTML = `<div class="card empty">${icon('alert')}<p>${esc(friendlyError(e))}</p><button class="btn soft" onclick="location.reload()">Tentar de novo</button></div>`;
+    if (token === renderToken) view.innerHTML = `<div class="card empty">${icon('alert')}<p>${esc(friendlyError(e))}</p><button class="btn soft" data-reload>Tentar de novo</button></div>`;
   }
 }
 window.addEventListener('hashchange', router);
@@ -236,7 +241,8 @@ function renderLogin(mode = 'entrar') {
       <form class="card stack" id="auth-form">
         ${signup ? '<label class="field"><span>Seu nome</span><input class="input" name="nome" required autocomplete="name"></label>' : ''}
         <label class="field"><span>E-mail</span><input class="input" type="email" name="email" required autocomplete="email" inputmode="email"></label>
-        <label class="field"><span>Senha</span><input class="input" type="password" name="senha" required minlength="6" autocomplete="${signup ? 'new-password' : 'current-password'}"></label>
+        <label class="field"><span>Senha</span><input class="input" type="password" name="senha" required minlength="8" autocomplete="${signup ? 'new-password' : 'current-password'}"></label>
+        ${signup ? '<p class="tiny muted" style="margin:-4px 0 0">Mínimo de 8 caracteres. Use letras e números.</p>' : ''}
         <button class="btn primary block" type="submit">${signup ? 'Criar conta' : 'Entrar'}</button>
         ${signup ? '' : '<button type="button" class="link-btn small" id="forgot">Esqueci minha senha</button>'}
       </form>
@@ -279,7 +285,7 @@ function renderPending() {
       <div class="brand-mark">NR</div>
       <h1 style="font-size:24px">Acesso aguardando aprovação</h1>
       <p class="muted">Sua conta (<b>${esc(state.user.email)}</b>) foi criada. A administradora precisa liberar seu acesso em <b>Mais → Equipe</b>.</p>
-      <div class="row" style="justify-content:center"><button class="btn soft" onclick="location.reload()">Verificar de novo</button><button class="btn ghost" id="out">Sair</button></div>
+      <div class="row" style="justify-content:center"><button class="btn soft" data-reload>Verificar de novo</button><button class="btn ghost" id="out">Sair</button></div>
     </div></div>`;
   $('#out').onclick = () => sb.auth.signOut();
 }
@@ -288,7 +294,7 @@ async function renderNewPassword() {
   app.innerHTML = `
     <div class="auth"><div class="auth-card">
       <div class="brand-mark">NR</div><h1>Nova senha</h1><p class="sub">Escolha uma nova senha de acesso</p>
-      <form class="card stack" id="pw"><label class="field"><span>Nova senha</span><input class="input" type="password" name="s" minlength="6" required autocomplete="new-password"></label>
+      <form class="card stack" id="pw"><label class="field"><span>Nova senha</span><input class="input" type="password" name="s" minlength="8" required autocomplete="new-password"></label>
       <button class="btn primary block">Salvar</button></form></div></div>`;
   $('#pw').onsubmit = async (e) => {
     e.preventDefault();
@@ -320,7 +326,7 @@ async function onSession(session) {
 async function boot() {
   if (!getConfig()) { renderSetup(); return; }
   if (!window.supabase) {
-    app.innerHTML = `<div class="auth"><div class="card empty">${icon('alert')}<p>Sem conexão com a internet para carregar o sistema.</p><button class="btn soft" onclick="location.reload()">Tentar de novo</button></div></div>`;
+    app.innerHTML = `<div class="auth"><div class="card empty">${icon('alert')}<p>Sem conexão com a internet para carregar o sistema.</p><button class="btn soft" data-reload>Tentar de novo</button></div></div>`;
     return;
   }
   initClient();

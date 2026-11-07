@@ -461,3 +461,37 @@ create trigger agendamentos_protege_preco before insert or update on public.agen
 -- v1.4.0 · Cidade e CPF/CNPJ da clínica (usados no recibo)
 alter table public.configuracoes add column if not exists cidade text;
 alter table public.configuracoes add column if not exists documento text;
+
+-- =====================================================================
+-- v1.5.0 · Reforço de segurança
+-- =====================================================================
+revoke execute on all functions in schema private from public, anon, authenticated;
+grant execute on function private.is_staff() to authenticated;
+grant execute on function private.is_admin() to authenticated;
+revoke usage on schema private from anon;
+
+alter table public.anamneses drop constraint if exists anamneses_assinatura_png;
+alter table public.anamneses add constraint anamneses_assinatura_png
+  check (assinatura is null or (assinatura ~ '^data:image/png;base64,[A-Za-z0-9+/=]+$' and length(assinatura) <= 400000));
+alter table public.anamneses drop constraint if exists anamneses_dados_tamanho;
+alter table public.anamneses add constraint anamneses_dados_tamanho check (pg_column_size(dados) <= 60000);
+alter table public.servicos drop constraint if exists servicos_cor_hex;
+alter table public.servicos add constraint servicos_cor_hex check (cor is null or cor ~ '^#[0-9a-fA-F]{6}$');
+alter table public.profissionais drop constraint if exists profissionais_cor_hex;
+alter table public.profissionais add constraint profissionais_cor_hex check (cor is null or cor ~ '^#[0-9a-fA-F]{6}$');
+alter table public.categorias_financeiras drop constraint if exists categorias_cor_hex;
+alter table public.categorias_financeiras add constraint categorias_cor_hex check (cor is null or cor ~ '^#[0-9a-fA-F]{6}$');
+alter table public.clientes drop constraint if exists clientes_tamanhos;
+alter table public.clientes add constraint clientes_tamanhos check (
+  length(nome) between 1 and 150 and coalesce(length(observacoes),0) <= 5000 and coalesce(length(endereco),0) <= 300
+  and coalesce(length(telefone),0) <= 20 and coalesce(length(email),0) <= 150);
+alter table public.perfis drop constraint if exists perfis_nome_tamanho;
+alter table public.perfis add constraint perfis_nome_tamanho check (coalesce(length(nome),0) <= 80);
+alter table public.evolucoes drop constraint if exists evolucoes_texto_tamanho;
+alter table public.evolucoes add constraint evolucoes_texto_tamanho check (length(texto) <= 10000);
+alter table public.lancamentos drop constraint if exists lancamentos_desc_tamanho;
+alter table public.lancamentos add constraint lancamentos_desc_tamanho check (length(descricao) <= 300 and coalesce(length(observacoes),0) <= 2000);
+alter table public.agendamentos drop constraint if exists agendamentos_obs_tamanho;
+alter table public.agendamentos add constraint agendamentos_obs_tamanho check (coalesce(length(observacoes),0) <= 2000 and fim > inicio);
+alter table public.configuracoes drop constraint if exists configuracoes_mensagens_tamanho;
+alter table public.configuracoes add constraint configuracoes_mensagens_tamanho check (pg_column_size(mensagens) <= 20000);

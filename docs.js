@@ -319,7 +319,7 @@ export async function gerarAnamnesePDF(an, cliente) {
   termo.forEach((ln) => { ctx.text(ln, M, ctx.y, 9.5, { color: C.text2 }); ctx.y -= 13; });
   ctx.y -= 18;
   const sx = W / 2 - 140, sw = 280;
-  if (an.assinatura && an.assinatura.startsWith('data:image/png')) {
+  if (an.assinatura && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(an.assinatura)) {
     try {
       const bytes = Uint8Array.from(atob(an.assinatura.split(',')[1]), (ch) => ch.charCodeAt(0));
       const img = await ctx.doc.embedPng(bytes);

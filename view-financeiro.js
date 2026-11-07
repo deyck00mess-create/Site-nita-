@@ -202,7 +202,7 @@ async function lancamentos(body, ref, m0, m1, params, alive, nav, reload) {
     const head = ['Tipo', 'Descrição', 'Cliente', 'Categoria', 'Valor', 'Forma', 'Situação', 'Vencimento', 'Pagamento', 'Parcela'];
     const csv = [head, ...rows.map((l) => [l.tipo, l.descricao, l.cliente?.nome || '', catById(l.categoria_id)?.nome || '', String(l.valor).replace('.', ','),
       FORMAS[l.forma_pagamento] || '', l.status, fmtDate(l.vencimento), l.data_pagamento ? fmtDate(l.data_pagamento) : '', l.parcela || ''])]
-      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+      .map((r) => r.map((v) => { let t = String(v ?? ''); if (/^[=+\-@\t\r]/.test(t) && !/^-?\d+([.,]\d+)?$/.test(t)) t = "'" + t; return `"${t.replace(/"/g, '""')}"`; }).join(';')).join('\n');
     downloadFile(`financeiro-${ymd(ref).slice(0, 7)}.csv`, csv);
   };
   draw();

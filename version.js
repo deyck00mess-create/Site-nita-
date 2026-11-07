@@ -10,9 +10,20 @@
  * e mostra as novidades depois de atualizar.
  * (Este arquivo também é lido pelo sw.js — não mude o formato.)
  */
-self.APP_VERSION = '1.4.3';
+self.APP_VERSION = '1.5.0';
 
 self.APP_CHANGELOG = [
+  {
+    versao: '1.5.0',
+    data: '2026-11-07',
+    itens: [
+      'Reforço de segurança: proteção contra códigos maliciosos em todo o app',
+      'Assinaturas da anamnese validadas no app e no banco de dados',
+      'Planilha exportada protegida contra fórmulas maliciosas',
+      'App não pode ser aberto “escondido” dentro de outro site',
+      'Senha mínima de 8 caracteres para novas contas'
+    ]
+  },
   {
     versao: '1.4.3',
     data: '2026-11-07',

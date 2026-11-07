@@ -11,6 +11,8 @@ import { ANAMNESE, TERMO, alertasAnamnese } from './anamnese-schema.js';
 import { abrirRecibo } from './docs.js';
 
 export const AG_SELECT = '*, cliente:clientes(id,nome,telefone,data_nascimento), servico:servicos(id,nome,cor,duracao_min), profissional:profissionais(id,nome,cor), pacote:pacotes(id,nome,total_sessoes)';
+// Só aceita imagem PNG em base64 (evita injeção de código pelo campo de assinatura)
+export const assinaturaSegura = (v) => (typeof v === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(v) ? v : null);
 const moneyVal = (v) => (Number(v) || 0).toFixed(2).replace('.', ',');
 
 // ---------------------------------------------------------------------
@@ -628,7 +630,7 @@ export function openAnamneseForm(cliente, anamnese = null) {
           <section class="anam-section card flat">
             <h4>Termo de responsabilidade</h4>
             <p class="small" style="margin-top:0">${esc(TERMO)}</p>
-            ${anamnese?.assinatura ? `<div class="mb"><span class="tiny muted">Assinatura registrada:</span><br><img class="sig-img" src="${anamnese.assinatura}" alt="Assinatura"></div>` : ''}
+            ${assinaturaSegura(anamnese?.assinatura) ? `<div class="mb"><span class="tiny muted">Assinatura registrada:</span><br><img class="sig-img" src="${assinaturaSegura(anamnese.assinatura)}" alt="Assinatura"></div>` : ''}
             <div class="sig-wrap"><canvas></canvas><div class="sig-hint">${anamnese?.assinatura ? 'Assine aqui para substituir' : 'Assinatura da cliente (use o dedo)'}</div></div>
             <button type="button" class="btn sm ghost mt-s" id="sig-clear">Limpar assinatura</button>
           </section>
@@ -685,7 +687,7 @@ export function anamneseHtml(an, cliente, { print = false, alertas: showAlerts =
     ${showAlerts && alertas.length ? `<div class="card flat mb" style="background:var(--danger-soft);border-color:transparent"><div class="row" style="color:var(--danger);font-weight:700;margin-bottom:6px">${icon('alert')} Atenção</div><div class="alert-list">${alertas.map((a) => `<span class="chip cancelado" style="white-space:normal">${esc(a)}</span>`).join('')}</div></div>` : ''}
     ${ANAMNESE.map((s) => `<div class="anam-section"><h4>${esc(s.titulo)}</h4><dl class="kv">${s.campos.map((c) => `<dt>${esc(c.label)}</dt><dd>${valor(c)}</dd>`).join('')}</dl></div>`).join('')}
     <div class="anam-section"><h4>Termo de responsabilidade</h4><p class="small">${esc(TERMO)}</p>
-      ${an.assinatura ? `<img class="sig-img" src="${an.assinatura}" alt="Assinatura"><div class="tiny muted">${esc(cliente.nome)} · ${fmtDate(an.data)}</div>` : '<p class="muted small">Sem assinatura registrada.</p>'}</div>`;
+      ${assinaturaSegura(an.assinatura) ? `<img class="sig-img" src="${assinaturaSegura(an.assinatura)}" alt="Assinatura"><div class="tiny muted">${esc(cliente.nome)} · ${fmtDate(an.data)}</div>` : '<p class="muted small">Sem assinatura registrada.</p>'}</div>`;
 }
 
 export function printHtml(html) {
