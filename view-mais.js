@@ -1,6 +1,6 @@
 import { sb, q, state, loadBase, getConfig, clearConfig } from './db.js';
 import {
-  esc, icon, money, toast, openModal, confirmDialog, formData, fmtPhone, onlyDigits,
+  esc, icon, money, toast, initials, openModal, confirmDialog, formData, fmtPhone, onlyDigits,
   DEFAULT_MSGS, MSG_LABELS, COLORS, fillTemplate
 } from './utils.js';
 import { setTopbar, go, install, setTheme, getTheme, APP_VERSION, APP_CHANGELOG, showChangelog } from './app.js';
@@ -9,7 +9,10 @@ import { msgVars } from './forms.js';
 export async function renderMais(view, params, alive) {
   const sub = params.sub;
   const pages = { clinica, servicos, profissionais, mensagens, categorias, equipe };
-  if (sub && pages[sub]) return pages[sub](view, alive);
+  if (sub && pages[sub]) {
+    if (state.perfil?.papel !== 'admin') { toast('Área disponível só para a administradora'); location.replace('#/mais'); return; }
+    return pages[sub](view, alive);
+  }
   return menu(view);
 }
 
@@ -21,11 +24,12 @@ function menu(view) {
   const item = (href, ico, title, sub) => `<a class="list-item" href="${href}" style="text-decoration:none;color:inherit">
     <div class="settings-ico">${icon(ico)}</div><div class="grow"><div class="li-title">${title}</div><div class="li-sub">${sub}</div></div>${icon('chevR', 'go')}</a>`;
   view.innerHTML = `
-    <div class="card row">
-      <div class="avatar lg">${icon('user')}</div>
-      <div class="grow"><div class="li-title">${esc(state.perfil?.nome || '')}</div><div class="li-sub">${esc(state.user.email)}</div>
+    <button class="card row" id="m-perfil" style="width:100%;text-align:left;cursor:pointer;color:var(--text)">
+      <div class="avatar lg">${esc(initials(state.perfil?.nome || state.user.email))}</div>
+      <div class="grow"><div class="li-title">${esc(state.perfil?.nome || '')}</div><div class="li-sub ellipsis">${esc(state.user.email)}</div>
       <span class="chip ${admin ? 'confirmado' : ''} mt-s">${admin ? 'Administradora' : 'Equipe'}</span></div>
-    </div>
+      <span class="btn sm soft">${icon('edit')} Editar</span>
+    </button>
 
     <div class="section-title">Aparência</div>
     <div class="card">
@@ -39,20 +43,20 @@ function menu(view) {
 
     <div class="section-title">Clínica</div>
     <div class="card pad-0 settings-group"><div class="list">
-      ${item('#/mais/clinica', 'heart', 'Dados da clínica', esc(state.config.nome_clinica || ''))}
-      ${item('#/mais/servicos', 'sparkle', 'Serviços e preços', `${state.servicos.filter((s) => s.ativo).length} ativos`)}
-      ${item('#/mais/profissionais', 'users', 'Profissionais e comissões', `${state.profissionais.filter((p) => p.ativo).length} ativos`)}
-      ${item('#/mais/mensagens', 'whats', 'Mensagens do WhatsApp', 'Confirmação, lembrete, aniversário…')}
+      ${admin ? item('#/mais/clinica', 'heart', 'Dados da clínica', esc(state.config.nome_clinica || '')) : ''}
+      ${admin ? item('#/mais/servicos', 'sparkle', 'Serviços e preços', `${state.servicos.filter((s) => s.ativo).length} ativos`) : ''}
+      ${admin ? item('#/mais/profissionais', 'users', 'Profissionais e comissões', `${state.profissionais.filter((p) => p.ativo).length} ativos`) : ''}
+      ${admin ? item('#/mais/mensagens', 'whats', 'Mensagens do WhatsApp', 'Confirmação, lembrete, aniversário…') : ''}
       ${item('#/lembretes', 'bell', 'Central de lembretes', 'Enviar avisos de amanhã')}
-      ${item('#/mais/categorias', 'tag', 'Categorias financeiras', `${state.categorias.length} categorias`)}
+      ${admin ? item('#/mais/categorias', 'tag', 'Categorias financeiras', `${state.categorias.length} categorias`) : ''}
       ${admin ? item('#/mais/equipe', 'shield', 'Equipe e acessos', 'Liberar acesso de recepção/profissionais') : ''}
     </div></div>
 
     <div class="section-title">Aplicativo</div>
     <div class="card pad-0 settings-group"><div class="list">
       <button class="list-item" id="m-install"><div class="settings-ico">${icon('install')}</div><div class="grow"><div class="li-title">Instalar no celular</div><div class="li-sub">${install.installed ? 'Já instalado neste aparelho ✓' : 'Adicionar à tela inicial'}</div></div>${icon('chevR', 'go')}</button>
-      <div class="list-item" style="cursor:default"><div class="settings-ico">${icon('db')}</div><div class="grow"><div class="li-title">Banco de dados</div><div class="li-sub ellipsis">${esc(cfg?.url || '')}</div></div>
-        ${cfg?.fromFile ? '' : '<button class="btn sm ghost" id="m-db">Trocar</button>'}</div>
+      ${admin ? `      <div class="list-item" style="cursor:default"><div class="settings-ico">${icon('db')}</div><div class="grow"><div class="li-title">Banco de dados</div><div class="li-sub ellipsis">${esc(cfg?.url || '')}</div></div>
+        ${cfg?.fromFile ? '' : '<button class="btn sm ghost" id="m-db">Trocar</button>'}</div>` : ''}
       <button class="list-item" id="m-version"><div class="settings-ico">${icon('sparkle')}</div><div class="grow"><div class="li-title">Versão ${esc(APP_VERSION)}</div><div class="li-sub">${APP_CHANGELOG[0] ? `Atualizado em ${APP_CHANGELOG[0].data.split('-').reverse().join('/')} · ver novidades` : 'Ver novidades'}</div></div>${icon('chevR', 'go')}</button>
       <button class="list-item" id="m-update"><div class="settings-ico">${icon('download')}</div><div class="grow"><div class="li-title">Procurar atualização</div><div class="li-sub">Baixa a versão mais recente</div></div>${icon('chevR', 'go')}</button>
       <button class="list-item" id="m-out"><div class="settings-ico" style="background:var(--danger-soft);color:var(--danger)">${icon('logout')}</div><div class="grow"><div class="li-title">Sair</div></div></button>
@@ -61,6 +65,7 @@ function menu(view) {
 
   view.querySelectorAll('#tema input').forEach((r) => (r.onchange = () => setTheme(r.value)));
   view.querySelector('#m-install').onclick = () => install.run();
+  view.querySelector('#m-perfil').onclick = () => editarNome(state.perfil, () => menu(view));
   view.querySelector('#m-version').onclick = () => showChangelog();
   view.querySelector('#m-update').onclick = async (ev) => {
     const btn = ev.currentTarget; btn.disabled = true;
@@ -255,19 +260,69 @@ async function equipe(view, alive) {
   const label = { admin: 'Administradora', equipe: 'Equipe', pendente: 'Aguardando aprovação' };
   view.innerHTML = `
     <div class="card mb" style="background:var(--surface-2);box-shadow:none;border:none"><div class="small">
+      <b>Administradora</b>: acesso total. <b>Equipe</b>: agenda, clientes, anamnese e registrar recebimentos — sem ver lucro, despesas, totais ou alterar preços e configurações.<br><br>
       Para dar acesso a outra pessoa: peça para ela abrir o app e tocar em <b>Criar conta</b>. Ela aparecerá aqui como “aguardando aprovação”. Toque em <b>Liberar</b>.</div></div>
     <div class="card pad-0"><div class="list">${perfis.map((p) => `
-      <div class="list-item" style="cursor:default">
+      <div class="list-item" style="cursor:default;align-items:flex-start">
         <div class="avatar">${esc((p.nome || p.email || '?').slice(0, 1).toUpperCase())}</div>
-        <div class="grow"><div class="li-title">${esc(p.nome || '')}${p.id === state.user.id ? ' (você)' : ''}</div><div class="li-sub ellipsis">${esc(p.email || '')}</div>
-          <span class="chip ${p.papel === 'pendente' ? 'pendente' : p.papel === 'admin' ? 'confirmado' : 'concluido'} mt-s">${label[p.papel]}</span></div>
-        ${p.id === state.user.id ? '' : `<select class="input" data-id="${p.id}" style="width:auto;min-height:36px;padding:6px 30px 6px 10px;font-size:14px">
-          <option value="pendente" ${p.papel === 'pendente' ? 'selected' : ''}>Bloqueado</option>
-          <option value="equipe" ${p.papel === 'equipe' ? 'selected' : ''}>Equipe</option>
-          <option value="admin" ${p.papel === 'admin' ? 'selected' : ''}>Admin</option></select>`}
-        ${p.papel === 'pendente' ? `<button class="btn sm primary" data-ok="${p.id}">Liberar</button>` : ''}
+        <div class="grow">
+          <div class="row" style="gap:6px"><div class="li-title ellipsis grow">${esc(p.nome || '')}${p.id === state.user.id ? ' (você)' : ''}</div>
+            <button class="icon-btn" data-nome="${p.id}" aria-label="Editar nome" style="width:34px;height:34px">${icon('edit')}</button></div>
+          <div class="li-sub ellipsis">${esc(p.email || '')}</div>
+          <div class="row mt-s" style="gap:8px">
+            <select class="input" data-id="${p.id}" style="width:auto;min-height:38px;padding:6px 32px 6px 12px;font-size:14px">
+              <option value="pendente" ${p.papel === 'pendente' ? 'selected' : ''}>Bloqueado</option>
+              <option value="equipe" ${p.papel === 'equipe' ? 'selected' : ''}>Equipe</option>
+              <option value="admin" ${p.papel === 'admin' ? 'selected' : ''}>Administradora</option></select>
+            ${p.papel === 'pendente' ? `<button class="btn sm primary" data-ok="${p.id}">Liberar</button>` : ''}
+          </div>
+        </div>
       </div>`).join('')}</div></div>`;
-  const set = async (id, papel) => { await q(sb.from('perfis').update({ papel }).eq('id', id)); toast('Acesso atualizado', 'success'); equipe(view, alive); };
+  const set = async (id, papel) => {
+    const self = id === state.user.id;
+    if (self && papel !== 'admin') {
+      const outras = perfis.filter((p) => p.papel === 'admin' && p.id !== id).length;
+      if (!outras) { toast('Antes, torne outra pessoa Administradora', 'error'); equipe(view, alive); return; }
+      if (!(await confirmDialog('Você vai deixar de ser administradora e perderá o acesso ao financeiro e às configurações. Continuar?', { ok: 'Sim, continuar', danger: true }))) { equipe(view, alive); return; }
+    }
+    try { await q(sb.from('perfis').update({ papel }).eq('id', id)); } catch { equipe(view, alive); return; }
+    toast('Acesso atualizado', 'success');
+    if (self) { setTimeout(() => { location.hash = '#/'; location.reload(); }, 800); return; }
+    equipe(view, alive);
+  };
   view.querySelectorAll('select[data-id]').forEach((s) => (s.onchange = () => set(s.dataset.id, s.value)));
   view.querySelectorAll('[data-ok]').forEach((b) => (b.onclick = () => set(b.dataset.ok, 'equipe')));
+  view.querySelectorAll('[data-nome]').forEach((b) => (b.onclick = () => editarNome(perfis.find((p) => p.id === b.dataset.nome), () => equipe(view, alive))));
+}
+
+// ---------------------------------------------------------------------
+// Editar nome (próprio perfil ou, para a admin, de alguém da equipe)
+export function editarNome(perfil, onDone) {
+  const proprio = perfil.id === state.user.id;
+  const m = openModal({
+    title: proprio ? 'Meu perfil' : 'Editar nome',
+    body: `<form id="nf" class="stack">
+      <label class="field"><span>${proprio ? 'Como você quer ser chamada?' : 'Nome'}</span>
+        <input class="input" name="nome" required maxlength="60" autocomplete="name" value="${esc(perfil.nome || '')}"></label>
+      <div class="small muted">E-mail de acesso: <b>${esc(perfil.email || '')}</b></div>
+      ${proprio ? '<div class="small muted">Esse nome aparece na saudação da tela inicial e na lista da equipe.</div>' : ''}
+    </form>`,
+    foot: `<button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="ok">Salvar</button>`,
+    onMount(el) {
+      const form = el.querySelector('#nf');
+      const salvar = async () => {
+        if (!form.reportValidity()) return;
+        const nome = form.nome.value.trim().replace(/\s+/g, ' ');
+        if (nome.length < 2) { toast('Digite um nome válido', 'error'); return; }
+        const btn = el.querySelector('#ok'); btn.disabled = true;
+        try {
+          const res = await q(sb.from('perfis').update({ nome }).eq('id', perfil.id).select().single());
+          if (proprio) state.perfil = res;
+          m.close(); toast('Nome atualizado ✓', 'success'); onDone?.();
+        } catch { btn.disabled = false; }
+      };
+      el.querySelector('#ok').onclick = salvar;
+      form.onsubmit = (e) => { e.preventDefault(); salvar(); };
+    }
+  });
 }

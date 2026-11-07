@@ -1,7 +1,7 @@
 // =====================================================================
 // Nita Reis · Gestão — inicialização, rotas, login e layout
 // =====================================================================
-import { sb, initClient, getConfig, saveConfig, state, loadBase, q, friendlyError } from './db.js';
+import { sb, initClient, getConfig, saveConfig, state, loadBase, q, friendlyError, isAdmin } from './db.js';
 import { esc, icon, toast, $, $$, closeAllModals } from './utils.js';
 import { renderDashboard } from './view-dashboard.js';
 import { renderAgenda } from './view-agenda.js';
@@ -123,7 +123,7 @@ const ROUTES = [
   { re: /^\/agenda$/, view: renderAgenda, nav: 'agenda' },
   { re: /^\/clientes$/, view: renderClientes, nav: 'clientes' },
   { re: /^\/cliente\/([\w-]+)$/, view: renderCliente, nav: 'clientes' },
-  { re: /^\/financeiro$/, view: renderFinanceiro, nav: 'financeiro' },
+  { re: /^\/financeiro$/, view: renderFinanceiro, nav: 'financeiro', admin: true },
   { re: /^\/lembretes$/, view: renderLembretes, nav: 'agenda' },
   { re: /^\/mais(?:\/(\w+))?$/, view: renderMais, nav: 'mais' }
 ];
@@ -139,9 +139,11 @@ const NAV = [
   { id: 'inicio', href: '#/', label: 'Início', ico: 'home' },
   { id: 'agenda', href: '#/agenda', label: 'Agenda', ico: 'calendar' },
   { id: 'clientes', href: '#/clientes', label: 'Clientes', ico: 'users' },
-  { id: 'financeiro', href: '#/financeiro', label: 'Financeiro', ico: 'wallet' },
+  { id: 'financeiro', href: '#/financeiro', label: 'Financeiro', ico: 'wallet', admin: true },
   { id: 'mais', href: '#/mais', label: 'Mais', ico: 'menu' }
 ];
+
+const navItems = () => NAV.filter((n) => !n.admin || isAdmin());
 
 function renderShell() {
   setTimeout(() => { const b = document.getElementById('side-version'); if (b) b.onclick = () => showChangelog(); }, 0);
@@ -149,16 +151,18 @@ function renderShell() {
     <div class="shell">
       <aside class="sidebar">
         <div class="brand"><div class="brand-mark">NR</div><div><b>${esc(state.config.nome_clinica || 'Nita Reis')}</b><span class="tiny muted">Estética & Massoterapia</span></div></div>
-        ${NAV.map((n) => `<a href="${n.href}" data-nav="${n.id}">${icon(n.ico)}<span>${n.label}</span></a>`).join('')}
+        ${navItems().map((n) => `<a href="${n.href}" data-nav="${n.id}">${icon(n.ico)}<span>${n.label}</span></a>`).join('')}
         <button class="link-btn tiny muted" id="side-version" style="margin-top:auto;text-align:left;padding:8px 12px">Versão ${esc(APP_VERSION)}</button>
       </aside>
       <div>
-        <header class="topbar"><div class="topbar-inner" id="topbar"></div></header>
+        <header class="app-header">
+          <nav class="top-nav" aria-label="Navegação principal" style="grid-template-columns:repeat(${navItems().length},1fr)">
+            ${navItems().map((n) => `<a href="${n.href}" data-nav="${n.id}">${icon(n.ico)}<span>${n.label}</span></a>`).join('')}
+          </nav>
+          <div class="topbar"><div class="topbar-inner" id="topbar"></div></div>
+        </header>
         <main class="main" id="view"></main>
       </div>
-      <nav class="bottom-nav" aria-label="Navegação principal">
-        ${NAV.map((n) => `<a href="${n.href}" data-nav="${n.id}"><span class="nav-ico">${icon(n.ico)}</span>${n.label}</a>`).join('')}
-      </nav>
     </div>`;
 }
 
@@ -179,7 +183,8 @@ async function router() {
   if (!state.user || !state.loaded) return;
   closeAllModals();
   const { path, params } = parseHash();
-  const route = ROUTES.find((r) => r.re.test(path)) || ROUTES[0];
+  let route = ROUTES.find((r) => r.re.test(path)) || ROUTES[0];
+  if (route.admin && !isAdmin()) { toast('Área disponível só para a administradora'); location.replace('#/'); return; }
   const m = path.match(route.re);
   $$('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === route.nav));
   const view = document.getElementById('view');

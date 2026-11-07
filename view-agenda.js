@@ -1,4 +1,4 @@
-import { sb, q, state } from './db.js';
+import { sb, q, state, isAdmin } from './db.js';
 import { esc, icon, ymd, hm, today, parseYmd, addDays, fmtDateLong, weekdayShort, money } from './utils.js';
 import { setTopbar, go, parseHash } from './app.js';
 import { AG_SELECT, openAgendamentoForm } from './forms.js';
@@ -47,7 +47,7 @@ export async function renderAgenda(view, params, alive) {
   view.innerHTML = `
     <div class="day-nav">
       <button class="icon-btn" id="prev" aria-label="Dia anterior">${icon('chevL')}</button>
-      <div class="day-label"><b>${esc(fmtDateLong(dia))}</b><span class="small muted">${ativos.length} atendimento${ativos.length === 1 ? '' : 's'} · previsto ${money(previsto)}</span></div>
+      <div class="day-label"><b>${esc(fmtDateLong(dia))}</b><span class="small muted">${ativos.length} atendimento${ativos.length === 1 ? '' : 's'}${isAdmin() ? ` · previsto ${money(previsto)}` : ''}</span></div>
       <button class="icon-btn" id="next" aria-label="Próximo dia">${icon('chevR')}</button>
     </div>
     <div class="week">

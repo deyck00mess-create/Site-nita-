@@ -10,9 +10,33 @@
  * e mostra as novidades depois de atualizar.
  * (Este arquivo também é lido pelo sw.js — não mude o formato.)
  */
-self.APP_VERSION = '1.1.1';
+self.APP_VERSION = '1.3.0';
 
 self.APP_CHANGELOG = [
+  {
+    versao: '1.3.0',
+    data: '2026-11-07',
+    itens: [
+      'Níveis de acesso: Administradora (tudo) e Equipe (dia a dia)',
+      'Equipe não vê financeiro, lucro, despesas nem totais',
+      'Equipe registra recebimentos, mas não altera preços, descontos ou valores',
+      'Configurações, serviços, preços e pacotes só para a administradora',
+      'Só a administradora exclui clientes, agendamentos e lançamentos',
+      'Transferir a administração em Mais → Equipe e acessos'
+    ]
+  },
+  {
+    versao: '1.2.0',
+    data: '2026-11-07',
+    itens: [
+      'Barra de navegação (Início, Agenda, Clientes…) agora fica no topo',
+      'Editar seu nome em Mais → toque no seu perfil',
+      'Administradora pode corrigir o nome de quem é da equipe',
+      'Lançamento de receita com campo de cliente (aparece no histórico dela)',
+      'Ao concluir, o app detecta recebimento já lançado e não duplica o valor',
+      'Atendimento só fica “concluído” depois que o pagamento é gravado'
+    ]
+  },
   {
     versao: '1.1.1',
     data: '2026-11-07',

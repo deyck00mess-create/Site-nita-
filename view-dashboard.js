@@ -1,6 +1,7 @@
-import { sb, q, state } from './db.js';
+import { sb, q, state, isAdmin } from './db.js';
 import { esc, icon, money, hm, ymd, today, addDays, startOfMonth, endOfMonth, initials, firstName, fmtDayMonth, parseYmd, STATUS_LABEL } from './utils.js';
 import { setTopbar, go, install, refresh } from './app.js';
+import { editarNome } from './view-mais.js';
 import { AG_SELECT, openAgendamentoForm, openClienteForm, openLancamentoForm, openConcluir, whatsMenu, sendWhats } from './forms.js';
 
 export async function renderDashboard(view, _p, alive) {
@@ -12,11 +13,12 @@ export async function renderDashboard(view, _p, alive) {
   const d1 = addDays(d0, 1), d2 = addDays(d0, 2);
   const m0 = ymd(startOfMonth(now)), m1 = ymd(endOfMonth(now));
 
+  const admin = isAdmin();
   const [ags, amanha, lancMes, pendentes, clientes] = await Promise.all([
     q(sb.from('agendamentos').select(AG_SELECT).gte('inicio', d0.toISOString()).lt('inicio', d1.toISOString()).order('inicio')),
     q(sb.from('agendamentos').select('id,lembrete_enviado,status,cliente:clientes(telefone)').gte('inicio', d1.toISOString()).lt('inicio', d2.toISOString()).in('status', ['agendado', 'confirmado'])),
-    q(sb.from('lancamentos').select('tipo,valor,data_pagamento').eq('status', 'pago').gte('data_pagamento', m0).lte('data_pagamento', m1)),
-    q(sb.from('lancamentos').select('tipo,valor,vencimento').eq('status', 'pendente')),
+    admin ? q(sb.from('lancamentos').select('tipo,valor,data_pagamento').eq('status', 'pago').gte('data_pagamento', m0).lte('data_pagamento', m1)) : [],
+    admin ? q(sb.from('lancamentos').select('tipo,valor,vencimento').eq('status', 'pendente')) : [],
     q(sb.from('clientes').select('id,nome,telefone,data_nascimento').eq('ativo', true).not('data_nascimento', 'is', null))
   ]);
   if (!alive()) return;
@@ -41,6 +43,7 @@ export async function renderDashboard(view, _p, alive) {
   const hora = now.getHours();
   const saud = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   const nome = firstName(state.perfil?.nome || '');
+  const nomeGenerico = !state.perfil?.nome || state.perfil.nome === String(state.user.email || '').split('@')[0];
 
   view.innerHTML = `
     <div class="hero">
@@ -48,22 +51,32 @@ export async function renderDashboard(view, _p, alive) {
       <p>${now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })} · ${ativos.length ? `${ativos.length} atendimento${ativos.length > 1 ? 's' : ''} hoje` : 'agenda livre hoje'}</p>
     </div>
 
+    ${nomeGenerico ? `<button class="install-banner mt" id="fix-nome" style="width:100%;border:none;text-align:left;cursor:pointer;color:var(--text)">
+      <div class="settings-ico">${icon('user')}</div>
+      <div class="grow"><b>Como você quer ser chamada?</b><span class="small muted">Toque para colocar seu nome</span></div>
+      <span class="btn sm primary">Ajustar</span></button>` : ''}
+
     ${!install.installed ? `<div class="install-banner mt" id="install-banner">
       <div class="settings-ico">${icon('install')}</div>
       <div class="grow"><b>Instale o app no celular</b><span class="small muted">Acesso rápido pela tela inicial</span></div>
       <button class="btn sm primary" id="btn-install">Instalar</button></div>` : ''}
 
-    <div class="kpis mt">
+    ${admin ? `<div class="kpis mt">
       <div class="kpi accent"><div class="label">${icon('calendar')} Hoje</div><div class="value">${ativos.length}</div><div class="sub">${ativos.filter((a) => a.status === 'concluido').length} concluído(s)</div></div>
       <div class="kpi"><div class="label">Recebido hoje</div><div class="value">${money(recHoje)}</div><div class="sub">no caixa</div></div>
       <div class="kpi"><div class="label">Faturamento do mês</div><div class="value">${money(recMes)}</div><div class="sub">lucro ${money(recMes - despMes)}</div></div>
       <div class="kpi"><div class="label">A receber</div><div class="value text-warning">${money(aReceber)}</div><div class="sub">${pendentes.filter((l) => l.tipo === 'receita').length} pendente(s)</div></div>
-    </div>
+    </div>` : `<div class="kpis mt">
+      <div class="kpi accent"><div class="label">${icon('calendar')} Hoje</div><div class="value">${ativos.length}</div><div class="sub">atendimento(s)</div></div>
+      <div class="kpi"><div class="label">Concluídos</div><div class="value text-success">${ativos.filter((a) => a.status === 'concluido').length}</div><div class="sub">hoje</div></div>
+      <div class="kpi"><div class="label">A confirmar</div><div class="value text-warning">${ativos.filter((a) => a.status === 'agendado').length}</div><div class="sub">hoje</div></div>
+      <div class="kpi"><div class="label">Próximo</div><div class="value">${(() => { const p = ativos.find((a) => ['agendado', 'confirmado'].includes(a.status) && new Date(a.fim) > now); return p ? hm(new Date(p.inicio)) : '—'; })()}</div><div class="sub">horário</div></div>
+    </div>`}
 
     <div class="quick mt">
       <button id="q-ag"><span class="q-ico">${icon('calendar')}</span>Agendar</button>
       <button id="q-cl"><span class="q-ico">${icon('user')}</span>Nova cliente</button>
-      <button id="q-lc"><span class="q-ico">${icon('wallet')}</span>Lançamento</button>
+      <button id="q-lc"><span class="q-ico">${icon('wallet')}</span>${admin ? 'Lançamento' : 'Recebimento'}</button>
     </div>
 
     ${lembretesPend || aPagarVenc.length ? `<div class="stack mt">
@@ -101,6 +114,7 @@ export async function renderDashboard(view, _p, alive) {
   view.querySelector('#q-lc').onclick = () => openLancamentoForm().then((r) => r && refresh());
   view.querySelector('#go-lemb')?.addEventListener('click', () => go('/lembretes'));
   view.querySelector('#btn-install')?.addEventListener('click', () => install.run());
+  view.querySelector('#fix-nome')?.addEventListener('click', () => editarNome(state.perfil, refresh));
   view.querySelectorAll('[data-wa]').forEach((b) => (b.onclick = (e) => {
     e.stopPropagation();
     const c = bdays.find((x) => x.id === b.dataset.wa);

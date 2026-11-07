@@ -1,7 +1,7 @@
 // =====================================================================
 // Formulários e janelas compartilhadas entre as telas
 // =====================================================================
-import { sb, q, state, servicoById, profById, catByName, msgTemplate } from './db.js';
+import { sb, q, state, servicoById, profById, catByName, msgTemplate, isAdmin } from './db.js';
 import {
   esc, icon, toast, openModal, confirmDialog, formData, money, parseMoney, fmtDate, fmtDateLong, fmtPhone,
   ymd, hm, today, parseYmd, addMonths, initials, firstName, openWhats, fillTemplate, debounce, age,
@@ -164,14 +164,14 @@ export function openAgendamentoForm({ agendamento = null, data = null, hora = nu
               <select class="input" name="profissional_id"><option value="">—</option>
                 ${profs.map((p) => `<option value="${p.id}" ${p.id === ag?.profissional_id || (!ag && profs.length === 1) ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}
               </select></label>
-            <label class="field"><span>Valor (R$)</span><input class="input" name="valor" inputmode="decimal" data-type="money" value="${moneyVal(ag ? ag.valor : servs[0]?.preco)}"></label>
-            <label class="field"><span>Desconto (R$)</span><input class="input" name="desconto" inputmode="decimal" data-type="money" value="${moneyVal(ag?.desconto)}"></label>
+            <label class="field"><span>Valor (R$)${isAdmin() ? '' : ' 🔒'}</span><input class="input" name="valor" inputmode="decimal" data-type="money" ${isAdmin() ? '' : 'readonly tabindex="-1" style="background:var(--surface-2)"'} value="${moneyVal(ag ? ag.valor : servs[0]?.preco)}"></label>
+            ${isAdmin() ? `<label class="field"><span>Desconto (R$)</span><input class="input" name="desconto" inputmode="decimal" data-type="money" value="${moneyVal(ag?.desconto)}"></label>` : ''}
           </div>
           <label class="field hidden" id="ag-pacote-wrap"><span>Usar sessão de pacote</span><select class="input" name="pacote_id"><option value="">Não usar pacote</option></select></label>
           ${ag ? `<label class="field"><span>Status</span><select class="input" name="status">${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}" ${k === ag.status ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}
           <label class="field"><span>Observações</span><textarea class="input" name="observacoes" rows="2" placeholder="Ex.: preferiu óleo sem cheiro">${esc(ag?.observacoes || '')}</textarea></label>
         </form>`,
-      foot: `${ag ? `<button class="btn danger" id="ag-del" style="flex:0 0 auto">${icon('trash')}</button>` : ''}
+      foot: `${ag && isAdmin() ? `<button class="btn danger" id="ag-del" style="flex:0 0 auto">${icon('trash')}</button>` : ''}
              <button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="ag-save">${ag ? 'Salvar' : 'Agendar'}</button>`,
       onMount(el) {
         const form = el.querySelector('#ag-form');
@@ -229,7 +229,7 @@ export function openAgendamentoForm({ agendamento = null, data = null, hora = nu
             const row = {
               cliente_id: c.id, servico_id: f.servico_id, profissional_id: f.profissional_id || null,
               pacote_id: f.pacote_id || null, inicio: inicio.toISOString(), fim: fim.toISOString(),
-              valor: f.valor || 0, desconto: f.desconto || 0, observacoes: f.observacoes
+              valor: f.valor || 0, desconto: isAdmin() ? (f.desconto || 0) : (ag?.desconto || 0), observacoes: f.observacoes
             };
             if (ag) row.status = f.status;
             const res = ag
@@ -265,7 +265,18 @@ function askSendConfirmation(ag) {
 // ---------------------------------------------------------------------
 // Concluir atendimento + registrar pagamento
 // ---------------------------------------------------------------------
-export function openConcluir(ag) {
+export async function openConcluir(ag) {
+  // Procura recebimento já lançado para este atendimento ou para a cliente no mesmo dia (evita duplicar)
+  const dia = ymd(new Date(ag.inicio));
+  let jaLancado = [];
+  try {
+    const [porAg, porCli] = await Promise.all([
+      q(sb.from('lancamentos').select('id,descricao,valor,status,agendamento_id').eq('agendamento_id', ag.id)),
+      q(sb.from('lancamentos').select('id,descricao,valor,status,agendamento_id,cliente_id').eq('tipo', 'receita').is('agendamento_id', null).eq('vencimento', dia))
+    ]);
+    const nome = (ag.cliente?.nome || '').toLowerCase();
+    jaLancado = [...porAg, ...porCli.filter((l) => l.cliente_id === ag.cliente_id || (nome && l.descricao.toLowerCase().includes(nome)))];
+  } catch {}
   return new Promise((resolve) => {
     let ok = false;
     const total = Math.max(0, (Number(ag.valor) || 0) - (Number(ag.desconto) || 0));
@@ -280,9 +291,13 @@ export function openConcluir(ag) {
         <form id="cc-form" class="stack mt">
           ${usaPacote ? `<div class="chip confirmado" style="white-space:normal">${icon('box')} Sessão do pacote “${esc(ag.pacote?.nome || '')}”${total > 0 ? ' + valor adicional' : ' — sem cobrança'}</div>` : ''}
           <div class="form-grid">
-            <label class="field"><span>Valor a receber (R$)</span><input class="input" name="valor" inputmode="decimal" data-type="money" value="${moneyVal(total)}"></label>
-            <label class="field"><span>Situação</span><select class="input" name="status"><option value="pago">Pago agora</option><option value="pendente">Fica pendente</option></select></label>
+            <label class="field"><span>Valor a receber (R$)${isAdmin() ? '' : ' 🔒'}</span><input class="input" name="valor" inputmode="decimal" data-type="money" ${isAdmin() ? '' : 'readonly tabindex="-1" style="background:var(--surface-2)"'} value="${moneyVal(total)}"></label>
+            <label class="field ${jaLancado.length ? 'full' : ''}"><span>Situação</span><select class="input" name="status">
+              ${jaLancado.map((l) => `<option value="link:${l.id}">Já lançado · ${esc(money(l.valor))} · ${l.status === 'pago' ? 'pago' : 'pendente'}</option>`).join('')}
+              <option value="pago">Pago agora</option><option value="pendente">Fica pendente</option></select></label>
           </div>
+          ${jaLancado.length ? `<div class="small" style="background:var(--warning-soft);color:var(--warning);border-radius:12px;padding:10px 12px">
+            Já existe um recebimento de <b>${esc(money(jaLancado[0].valor))}</b> (“${esc(jaLancado[0].descricao)}”). Ele será vinculado a este atendimento, sem lançar de novo.</div>` : ''}
           <div class="field"><span class="field-label">Forma de pagamento</span>
             <div class="check-grid">${Object.entries(FORMAS).filter(([k]) => k !== 'boleto').map(([k, v], i) =>
               `<label class="check"><input type="radio" name="forma" value="${k}" ${i === 0 ? 'checked' : ''}>${v}</label>`).join('')}</div></div>
@@ -291,23 +306,34 @@ export function openConcluir(ag) {
         </form>`,
       foot: `<button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="cc-ok">${icon('check')} Concluir</button>`,
       onMount(el) {
+        const ccf = el.querySelector('#cc-form');
+        const syncLink = () => {
+          const link = String(ccf.status.value).startsWith('link:');
+          ccf.valor.closest('.field').classList.toggle('hidden', link);
+          ccf.querySelector('.check-grid').closest('.field').classList.toggle('hidden', link);
+        };
+        ccf.status.onchange = syncLink; syncLink();
         el.querySelector('#cc-ok').onclick = async (ev) => {
           const btn = ev.currentTarget;
           btn.disabled = true;
           const f = formData(el.querySelector('#cc-form'));
           try {
-            await q(sb.from('agendamentos').update({ status: 'concluido' }).eq('id', ag.id));
-            if (f.valor > 0) {
+            if (String(f.status).startsWith('link:')) {
+              // Vincula o recebimento já existente a este atendimento e à cliente
+              await q(sb.from('lancamentos').update({ agendamento_id: ag.id, cliente_id: ag.cliente_id, profissional_id: ag.profissional_id || null }).eq('id', f.status.slice(5)));
+            } else if (f.valor > 0) {
               const exists = await q(sb.from('lancamentos').select('id').eq('agendamento_id', ag.id).limit(1));
               const row = {
                 tipo: 'receita', descricao: `${ag.servico?.nome || 'Atendimento'} — ${ag.cliente?.nome || ''}`.trim(),
                 valor: f.valor, categoria_id: catByName('Atendimentos', 'receita')?.id || null, forma_pagamento: f.forma,
-                status: f.status, vencimento: ymd(new Date(ag.inicio)), data_pagamento: f.status === 'pago' ? today() : null,
+                status: f.status, vencimento: dia, data_pagamento: f.status === 'pago' ? today() : null,
                 cliente_id: ag.cliente_id, agendamento_id: ag.id, profissional_id: ag.profissional_id || null
               };
               if (exists.length) await q(sb.from('lancamentos').update(row).eq('id', exists[0].id));
               else await q(sb.from('lancamentos').insert(row));
             }
+            // Só marca como concluído depois que o financeiro foi gravado
+            await q(sb.from('agendamentos').update({ status: 'concluido' }).eq('id', ag.id));
             if (f.evolucao) await q(sb.from('evolucoes').insert({ cliente_id: ag.cliente_id, agendamento_id: ag.id, data: ymd(new Date(ag.inicio)), texto: f.evolucao }));
             ok = true; m.close();
             toast('Atendimento concluído ✨', 'success');
@@ -376,29 +402,33 @@ export function openClienteForm(cliente = null) {
 // Lançamento financeiro (receita / despesa)
 // ---------------------------------------------------------------------
 export function openLancamentoForm(lanc = null, defaults = {}) {
+  const admin = isAdmin();
+  if (!admin) defaults = { categoria_id: catByName('Atendimentos', 'receita')?.id, ...defaults, tipo: 'receita' };
   return new Promise((resolve) => {
     let ok = false;
     const l = lanc || { tipo: 'receita', status: 'pago', vencimento: today(), ...defaults };
     const catOpts = (tipo) => state.categorias.filter((c) => c.tipo === tipo)
       .map((c) => `<option value="${c.id}" ${c.id === l.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
     const m = openModal({
-      title: lanc ? 'Editar lançamento' : 'Novo lançamento',
+      title: lanc ? 'Editar lançamento' : admin ? 'Novo lançamento' : 'Registrar recebimento',
       body: `
         <form id="lc-form" class="stack">
-          <div class="seg" style="align-self:flex-start">
+          ${admin ? '' : '<input type="hidden" name="tipo" value="receita">'}
+          <div class="seg ${admin ? '' : 'hidden'}" style="align-self:flex-start">
             <label><input type="radio" name="tipo" value="receita" ${l.tipo === 'receita' ? 'checked' : ''}><span>Receita</span></label>
             <label><input type="radio" name="tipo" value="despesa" ${l.tipo === 'despesa' ? 'checked' : ''}><span>Despesa</span></label>
           </div>
-          <label class="field"><span>Descrição *</span><input class="input" name="descricao" required value="${esc(l.descricao || '')}" placeholder="Ex.: Aluguel da sala, Óleo de massagem…"></label>
+          <label class="field"><span>Descrição *</span><input class="input" name="descricao" required value="${esc(l.descricao || '')}" placeholder="${admin ? 'Ex.: Aluguel da sala, Óleo de massagem…' : 'Ex.: Drenagem — Maria'}"></label>
+          ${defaults.cliente_id ? '' : `<div class="field ${l.tipo === 'receita' ? '' : 'hidden'}" id="lc-cli-wrap"><span class="field-label">Cliente (opcional — aparece no histórico dela)</span><div id="lc-cli"></div></div>`}
           <div class="form-grid">
             <label class="field"><span>Valor (R$) *</span><input class="input" name="valor" inputmode="decimal" data-type="money" required value="${l.valor != null ? moneyVal(l.valor) : ''}" placeholder="0,00"></label>
-            <label class="field"><span>Categoria</span><select class="input" name="categoria_id"><option value="">—</option>${catOpts(l.tipo)}</select></label>
+            <label class="field ${admin ? '' : 'hidden'}"><span>Categoria</span><select class="input" name="categoria_id"><option value="">—</option>${catOpts(l.tipo)}</select></label>
             <label class="field"><span>Situação</span><select class="input" name="status"><option value="pago" ${l.status === 'pago' ? 'selected' : ''}>Pago / recebido</option><option value="pendente" ${l.status === 'pendente' ? 'selected' : ''}>Pendente</option></select></label>
             <label class="field"><span>Forma de pagamento</span><select class="input" name="forma_pagamento"><option value="">—</option>${Object.entries(FORMAS).map(([k, v]) => `<option value="${k}" ${k === l.forma_pagamento ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
             <label class="field"><span>Vencimento</span><input class="input" type="date" name="vencimento" required value="${esc(l.vencimento || today())}"></label>
             <label class="field"><span>Data do pagamento</span><input class="input" type="date" name="data_pagamento" value="${esc(l.data_pagamento || (l.status === 'pago' && !lanc ? today() : ''))}"></label>
-            <label class="field"><span>Profissional (comissão)</span><select class="input" name="profissional_id"><option value="">—</option>${state.profissionais.map((p) => `<option value="${p.id}" ${p.id === l.profissional_id ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</select></label>
-            ${lanc ? '' : `<label class="field"><span>Repetir</span><select class="input" name="repetir">
+            <label class="field ${admin ? '' : 'hidden'}"><span>Profissional (comissão)</span><select class="input" name="profissional_id"><option value="">—</option>${state.profissionais.map((p) => `<option value="${p.id}" ${p.id === l.profissional_id ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</select></label>
+            ${lanc || !admin ? '' : `<label class="field"><span>Repetir</span><select class="input" name="repetir">
                 <option value="">Não repetir</option>
                 <option value="parc">Parcelar (dividir o valor)</option>
                 <option value="mensal">Repetir todo mês (mesmo valor)</option></select></label>
@@ -406,12 +436,15 @@ export function openLancamentoForm(lanc = null, defaults = {}) {
           </div>
           <label class="field"><span>Observações</span><textarea class="input" name="observacoes" rows="2">${esc(l.observacoes || '')}</textarea></label>
         </form>`,
-      foot: `${lanc ? `<button class="btn danger" id="lc-del" style="flex:0 0 auto">${icon('trash')}</button>` : ''}
+      foot: `${lanc && admin ? `<button class="btn danger" id="lc-del" style="flex:0 0 auto">${icon('trash')}</button>` : ''}
         <button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="lc-save">Salvar</button>`,
       onMount(el) {
         const form = el.querySelector('#lc-form');
+        const cliBox = el.querySelector('#lc-cli');
+        const picker = cliBox ? clientPicker(cliBox, { selected: lanc?.cliente_id ? { id: lanc.cliente_id, nome: lanc.cliente?.nome || 'Cliente', telefone: lanc.cliente?.telefone } : null }) : null;
         form.querySelectorAll('[name=tipo]').forEach((r) => (r.onchange = () => {
           form.categoria_id.innerHTML = '<option value="">—</option>' + catOpts(form.tipo.value);
+          el.querySelector('#lc-cli-wrap')?.classList.toggle('hidden', form.tipo.value !== 'receita');
         }));
         form.status.onchange = () => { if (form.status.value === 'pago' && !form.data_pagamento.value) form.data_pagamento.value = today(); if (form.status.value === 'pendente') form.data_pagamento.value = ''; };
         form.repetir?.addEventListener('change', () => el.querySelector('#lc-n').classList.toggle('hidden', !form.repetir.value));
@@ -426,11 +459,15 @@ export function openLancamentoForm(lanc = null, defaults = {}) {
           const f = formData(form);
           if (!(f.valor > 0)) { toast('Informe o valor', 'error'); return; }
           btn.disabled = true;
-          const { repetir, vezes } = f; delete f.repetir; delete f.vezes;
+          const { repetir, vezes } = f; delete f.repetir; delete f.vezes; delete f.nova_nome; delete f.nova_tel;
           if (f.status === 'pago' && !f.data_pagamento) f.data_pagamento = today();
           if (f.status === 'pendente') f.data_pagamento = null;
           const base = { ...defaults, ...f, profissional_id: f.profissional_id || null, categoria_id: f.categoria_id || null, forma_pagamento: f.forma_pagamento || null };
           try {
+            if (picker) {
+              const c = f.tipo === 'receita' ? await picker.resolve() : null;
+              base.cliente_id = c?.id || null;
+            }
             if (lanc) await q(sb.from('lancamentos').update(base).eq('id', lanc.id));
             else if (repetir && vezes > 1) {
               const rows = [];

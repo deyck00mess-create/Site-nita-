@@ -1,4 +1,4 @@
-import { sb, q, state } from './db.js';
+import { sb, q, state, isAdmin } from './db.js';
 import {
   esc, icon, money, fmtDate, fmtPhone, initials, age, hm, today, parseYmd, onlyDigits, debounce, toast,
   confirmDialog, openModal, formData, STATUS_LABEL, FORMAS
@@ -72,6 +72,7 @@ export async function renderClientes(view, params, alive) {
 // ---------------------------------------------------------------------
 export async function renderCliente(view, params, alive) {
   const id = params.id;
+  const admin = isAdmin();
   const aba = params.aba || 'historico';
   const reload = () => renderCliente(view, { id, aba: parseHash().params.aba || aba }, alive);
 
@@ -81,7 +82,7 @@ export async function renderCliente(view, params, alive) {
     q(sb.from('anamneses').select('*').eq('cliente_id', id).order('data', { ascending: false })),
     q(sb.from('evolucoes').select('*').eq('cliente_id', id).order('data', { ascending: false }).order('created_at', { ascending: false })),
     q(sb.from('pacotes').select('*, servico:servicos(nome), agendamentos(id,status,inicio)').eq('cliente_id', id).order('created_at', { ascending: false })),
-    q(sb.from('lancamentos').select('*').eq('cliente_id', id).eq('tipo', 'receita').order('vencimento', { ascending: false }))
+    admin ? q(sb.from('lancamentos').select('*, cliente:clientes(nome,telefone)').eq('cliente_id', id).eq('tipo', 'receita').order('vencimento', { ascending: false })) : []
   ]);
   if (!alive()) return;
 
@@ -99,7 +100,7 @@ export async function renderCliente(view, params, alive) {
   const tabs = [
     ['historico', `Histórico (${ags.length})`], ['anamnese', `Anamnese${anams.length ? ` (${anams.length})` : ''}`],
     ['evolucao', 'Evolução'], ['pacotes', `Pacotes${pacotes.length ? ` (${pacotes.length})` : ''}`],
-    ['financeiro', 'Financeiro'], ['dados', 'Dados']
+    ...(admin ? [['financeiro', 'Financeiro']] : []), ['dados', 'Dados']
   ];
 
   view.innerHTML = `
@@ -116,11 +117,14 @@ export async function renderCliente(view, params, alive) {
         <button class="btn sm whats" id="c-wa" ${c.telefone ? '' : 'disabled'}>${icon('whats')} WhatsApp</button>
         ${c.telefone ? `<a class="btn sm ghost" href="tel:${onlyDigits(c.telefone)}">${icon('phone')} Ligar</a>` : ''}
         <button class="btn sm primary" id="c-ag">${icon('calendar')} Agendar</button>
+        ${admin ? '' : `<button class="btn sm soft" id="c-rec">${icon('wallet')} Recebimento</button>`}
       </div>
       <div class="stat-row">
         <div><b>${concluidos.length}</b><span>atendimentos</span></div>
-        <div><b>${money(gasto)}</b><span>total pago</span></div>
-        <div><b class="${devendo ? 'text-warning' : ''}">${money(devendo)}</b><span>em aberto</span></div>
+        ${admin ? `<div><b>${money(gasto)}</b><span>total pago</span></div>
+        <div><b class="${devendo ? 'text-warning' : ''}">${money(devendo)}</b><span>em aberto</span></div>`
+        : `<div><b>${concluidos[0] ? fmtDate(concluidos[0].inicio) : '—'}</b><span>última visita</span></div>
+        <div><b>${futuros.length}</b><span>agendado(s)</span></div>`}
       </div>
       ${faltas ? `<p class="small text-danger" style="margin:10px 0 0">⚠ ${faltas} falta${faltas > 1 ? 's' : ''} registrada${faltas > 1 ? 's' : ''}</p>` : ''}
     </div>
@@ -141,6 +145,7 @@ export async function renderCliente(view, params, alive) {
 
   view.querySelector('#c-wa').onclick = () => whatsMenu({ cliente: c, ...(futuros[0] || {}), cliente_id: c.id });
   view.querySelector('#c-ag').onclick = () => openAgendamentoForm({ cliente: c }).then((r) => r && reload());
+  view.querySelector('#c-rec')?.addEventListener('click', () => openLancamentoForm(null, { cliente_id: id, descricao: `Atendimento — ${c.nome}` }));
   view.querySelector('#c-anam-cta')?.addEventListener('click', () => openAnamneseForm(c).then((r) => r && go(`/cliente/${id}?aba=anamnese`)));
   view.querySelectorAll('[data-aba]').forEach((b) => (b.onclick = () => history.replaceState(null, '', `#/cliente/${id}?aba=${b.dataset.aba}`) || renderTab(b.dataset.aba)));
   view.querySelectorAll('.list-item[data-ag]').forEach((r) => (r.onclick = () => {
@@ -200,7 +205,7 @@ export async function renderCliente(view, params, alive) {
     }
     if (t === 'pacotes') {
       body.innerHTML = `
-        <button class="btn primary mb" id="pc-new">${icon('plus')} Vender pacote</button>
+        ${admin ? `<button class="btn primary mb" id="pc-new">${icon('plus')} Vender pacote</button>` : ''}
         <div class="stack">${pacotes.map((p) => {
           const usadas = (p.agendamentos || []).filter((a) => a.status !== 'cancelado' && a.status !== 'faltou').length;
           const pct = Math.min(100, Math.round((usadas / p.total_sessoes) * 100));
@@ -210,10 +215,10 @@ export async function renderCliente(view, params, alive) {
             <span class="chip ${vencido && p.status === 'ativo' ? 'vencido' : p.status}">${vencido && p.status === 'ativo' ? 'vencido' : p.status}</span></div>
             <div class="row between small mt"><span>${usadas} de ${p.total_sessoes} sessões usadas</span><b>${p.total_sessoes - usadas} restantes</b></div>
             <div class="progress mt-s"><div style="width:${pct}%"></div></div>
-            ${p.status === 'ativo' ? `<div class="row mt" style="gap:6px"><button class="btn sm soft" data-fin="${p.id}">Finalizar</button><button class="btn sm ghost" data-can="${p.id}">Cancelar pacote</button></div>` : ''}
+            ${p.status === 'ativo' && admin ? `<div class="row mt" style="gap:6px"><button class="btn sm soft" data-fin="${p.id}">Finalizar</button><button class="btn sm ghost" data-can="${p.id}">Cancelar pacote</button></div>` : ''}
           </div>`;
         }).join('') || `<div class="card empty">${icon('box')}<p>Nenhum pacote.</p></div>`}</div>`;
-      body.querySelector('#pc-new').onclick = () => openPacoteForm(c).then((r) => r && reload());
+      body.querySelector('#pc-new')?.addEventListener('click', () => openPacoteForm(c).then((r) => r && reload()));
       body.querySelectorAll('[data-fin],[data-can]').forEach((b) => (b.onclick = async () => {
         const st = b.dataset.fin ? 'finalizado' : 'cancelado';
         if (!(await confirmDialog(`Marcar pacote como ${st}?`))) return;
@@ -241,11 +246,11 @@ export async function renderCliente(view, params, alive) {
         <div class="row wrap mt" style="gap:8px">
           <button class="btn soft" id="d-edit">${icon('edit')} Editar dados</button>
           <button class="btn ghost" id="d-ativo">${c.ativo ? 'Marcar como inativa' : 'Reativar cliente'}</button>
-          <button class="btn danger" id="d-del">${icon('trash')} Excluir</button>
+          ${admin ? `<button class="btn danger" id="d-del">${icon('trash')} Excluir</button>` : ''}
         </div>`;
       body.querySelector('#d-edit').onclick = () => openClienteForm(c).then((r) => r && reload());
       body.querySelector('#d-ativo').onclick = async () => { await q(sb.from('clientes').update({ ativo: !c.ativo }).eq('id', id)); reload(); };
-      body.querySelector('#d-del').onclick = async () => {
+      if (body.querySelector('#d-del')) body.querySelector('#d-del').onclick = async () => {
         if (!(await confirmDialog(`Excluir ${c.nome} e TODO o histórico (agendamentos, fichas, evoluções)? Isso não pode ser desfeito. Para só esconder a cliente, use "Marcar como inativa".`, { ok: 'Excluir tudo', danger: true }))) return;
         await q(sb.from('clientes').delete().eq('id', id)); toast('Cliente excluída'); go('/clientes');
       };

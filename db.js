@@ -43,6 +43,7 @@ function friendlyError(e) {
   if (m.includes('invalid login')) return 'E-mail ou senha incorretos';
   if (m.includes('email not confirmed')) return 'Confirme seu e-mail antes de entrar (veja sua caixa de entrada)';
   if (m.includes('already registered')) return 'Este e-mail já tem cadastro';
+  if (m.includes('apenas a administradora') || m.includes('pelo menos uma administradora')) return e.message;
   if (m.includes('signups not allowed') || m.includes('signup is disabled')) return 'Novos cadastros estão desligados. Peça à administradora para criar seu acesso.';
   if (m.includes('password')) return 'A senha precisa ter pelo menos 6 caracteres';
   return e?.message || 'Algo deu errado';
@@ -74,6 +75,7 @@ export async function loadBase() {
   state.loaded = true;
 }
 
+export const isAdmin = () => state.perfil?.papel === 'admin';
 export const msgTemplate = (key) => (state.config.mensagens || {})[key] || DEFAULT_MSGS[key];
 export const servicoById = (id) => state.servicos.find((s) => s.id === id);
 export const profById = (id) => state.profissionais.find((p) => p.id === id);
