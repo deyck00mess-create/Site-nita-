@@ -10,9 +10,14 @@
  * e mostra as novidades depois de atualizar.
  * (Este arquivo também é lido pelo sw.js — não mude o formato.)
  */
-self.APP_VERSION = '1.4.2';
+self.APP_VERSION = '1.4.3';
 
 self.APP_CHANGELOG = [
+  {
+    versao: '1.4.3',
+    data: '2026-11-07',
+    itens: ['Atualizações aparecem na hora: o app sempre confere se há arquivos novos ao abrir']
+  },
   {
     versao: '1.4.2',
     data: '2026-11-07',

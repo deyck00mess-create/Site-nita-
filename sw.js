@@ -26,10 +26,11 @@ self.addEventListener('fetch', (e) => {
   // Dados do Supabase: sempre direto da internet
   if (url.hostname.endsWith('supabase.co') || url.hostname.endsWith('supabase.in')) return;
 
-  // Arquivos do app: rede primeiro (pega atualizações), cache se estiver sem internet
+  // Arquivos do app: rede primeiro, ignorando o cache do navegador/GitHub (pega atualizações na hora);
+  // cópia salva quando estiver sem internet
   if (url.origin === location.origin) {
     e.respondWith(
-      fetch(req).then((res) => {
+      fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then((res) => {
         if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
         return res;
       }).catch(() => caches.match(req).then((r) => r || caches.match('./index.html')))
