@@ -500,3 +500,26 @@ code { background: var(--surface-3); padding: 1px 5px; border-radius: 5px; font-
 .ftile.active { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 0 0 3px var(--primary-soft); }
 .venc-banner { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; border: 1.5px solid transparent; border-radius: 14px; padding: 11px 14px; background: var(--danger-soft); color: var(--danger); cursor: pointer; font-size: 14px; }
 .venc-banner.active { border-color: var(--danger); }
+
+/* ---------- Clientes ---------- */
+.segmented.seg-count { grid-template-columns: repeat(4, 1fr); }
+.segmented.seg-count button { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 7px 2px; font-size: 13px; line-height: 1.2; }
+.segmented.seg-count small { font-size: 12px; font-weight: 600; color: var(--muted); }
+.segmented.seg-count button.active small { color: var(--primary); }
+.letter { font-size: 13px; font-weight: 800; color: var(--primary-strong); margin: 14px 4px 6px; letter-spacing: .04em; text-transform: uppercase; }
+.letter:first-child { margin-top: 2px; }
+.action-grid { display: grid; gap: 8px; }
+.action { display: flex; flex-direction: column; align-items: center; gap: 5px; border: 1px solid var(--border); background: var(--surface-2); border-radius: 14px; padding: 10px 2px 8px; font-size: 12px; font-weight: 700; color: var(--text); cursor: pointer; min-width: 0; }
+.action .a-ico { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary-strong); }
+.action .a-ico svg { width: 19px; height: 19px; }
+.action.wa .a-ico { background: #25d366; color: #fff; }
+.action:active { transform: scale(.97); }
+.ctabs { display: grid; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 14px; box-shadow: var(--shadow); }
+.ctabs button { position: relative; border: none; background: transparent; padding: 10px 0 9px; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; letter-spacing: -.01em; font-weight: 700; color: var(--muted); cursor: pointer; min-width: 0; }
+.ctabs button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctabs button svg { width: 20px; height: 20px; }
+.ctabs button.active { color: var(--primary-strong); background: var(--primary-soft); }
+.ctabs button.active::after { content: ''; position: absolute; left: 20%; right: 20%; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--primary); }
+.ctabs button i { position: absolute; top: 5px; right: calc(50% - 21px); font-style: normal; font-size: 10px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 99px; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.sec-head > span { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }

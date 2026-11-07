@@ -24,46 +24,80 @@ export async function renderClientes(view, params, alive) {
   if (!alive()) return;
   const mes = new Date().getMonth();
 
+  const ativas = rows.filter((r) => r.ativo);
+  const d30 = new Date(Date.now() - 30 * 86400000).toISOString();
+  const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+  const proxAniv = (c) => {
+    if (!c.data_nascimento) return null;
+    const b = parseYmd(c.data_nascimento);
+    let n = new Date(hoje0.getFullYear(), b.getMonth(), b.getDate());
+    if (n < hoje0) n = new Date(hoje0.getFullYear() + 1, b.getMonth(), b.getDate());
+    return Math.round((n - hoje0) / 86400000);
+  };
+  const filtros = [
+    ['todas', 'Todas', ativas.length],
+    ['aniv', 'Aniversário', ativas.filter((r) => r.data_nascimento && parseYmd(r.data_nascimento).getMonth() === mes).length],
+    ['novas', 'Novas', ativas.filter((r) => r.created_at >= d30).length],
+    ['inativas', 'Inativas', rows.length - ativas.length]
+  ];
+  let filtroAtual = filtro;
+
   view.innerHTML = `
     <div class="search mb">${icon('search')}<input type="search" id="busca" placeholder="Buscar por nome ou telefone" value="${esc(params.b || '')}" autocomplete="off"></div>
-    <div class="tabs">
-      <button class="tab ${filtro === 'todas' ? 'active' : ''}" data-f="todas">Todas (${rows.filter((r) => r.ativo).length})</button>
-      <button class="tab ${filtro === 'aniv' ? 'active' : ''}" data-f="aniv">🎂 Aniversariantes do mês</button>
-      <button class="tab ${filtro === 'novas' ? 'active' : ''}" data-f="novas">Novas (30 dias)</button>
-      <button class="tab ${filtro === 'inativas' ? 'active' : ''}" data-f="inativas">Inativas</button>
+    <div class="segmented seg-count mb" role="tablist">
+      ${filtros.map(([k, v, n]) => `<button role="tab" data-f="${k}" class="${k === filtro ? 'active' : ''}">${v}<small>${n}</small></button>`).join('')}
     </div>
-    <div class="card pad-0" id="lista"></div>
+    <div id="lista"></div>
     <button class="fab" id="fab" aria-label="Nova cliente">${icon('plus')}</button>`;
 
   const lista = view.querySelector('#lista');
   const busca = view.querySelector('#busca');
-  const draw = () => {
-    const t = busca.value.trim().toLowerCase();
-    const dig = onlyDigits(t);
-    const d30 = new Date(Date.now() - 30 * 86400000).toISOString();
-    let list = rows.filter((r) => (filtro === 'inativas' ? !r.ativo : r.ativo));
-    if (filtro === 'aniv') list = list.filter((r) => r.data_nascimento && parseYmd(r.data_nascimento).getMonth() === mes)
-      .sort((a, b) => parseYmd(a.data_nascimento).getDate() - parseYmd(b.data_nascimento).getDate());
-    if (filtro === 'novas') list = list.filter((r) => r.created_at >= d30);
-    if (t) list = list.filter((r) => r.nome.toLowerCase().includes(t) || (dig.length >= 3 && onlyDigits(r.telefone).includes(dig)));
-    lista.innerHTML = list.length ? `<div class="list">${list.map((c) => `
-      <div class="list-item" data-id="${c.id}">
+  const semAcento = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const item = (c) => {
+    const dias = proxAniv(c);
+    const aniv = dias !== null && dias <= 7 ? `<span class="chip pendente">🎂 ${dias === 0 ? 'hoje' : dias === 1 ? 'amanhã' : `em ${dias} dias`}</span>` : '';
+    return `<div class="list-item" data-id="${c.id}">
         <div class="avatar">${esc(initials(c.nome))}</div>
-        <div class="grow"><div class="li-title ellipsis">${esc(c.nome)}</div>
-          <div class="li-sub">${esc(fmtPhone(c.telefone) || 'sem telefone')}${filtro === 'aniv' ? ` · 🎂 ${parseYmd(c.data_nascimento).getDate()}/${mes + 1}` : ''}</div></div>
-        ${c.telefone ? `<button class="icon-btn whats" data-wa="${c.id}" aria-label="WhatsApp">${icon('whats')}</button>` : ''}
-      </div>`).join('')}</div>`
-      : `<div class="empty">${icon('users')}<p>${rows.length ? 'Nenhuma cliente encontrada.' : 'Nenhuma cliente cadastrada ainda.'}</p>${rows.length ? '' : `<button class="btn soft" id="empty-new">${icon('plus')} Cadastrar primeira cliente</button>`}</div>`;
+        <div class="grow" style="min-width:0"><div class="li-title ellipsis">${esc(c.nome)}</div>
+          <div class="li-sub ellipsis">${esc(fmtPhone(c.telefone) || 'sem telefone')}${filtroAtual === 'aniv' ? ` · 🎂 ${parseYmd(c.data_nascimento).getDate()}/${mes + 1}` : ''}</div></div>
+        ${aniv}
+        ${c.telefone ? `<button class="icon-btn whats" data-wa="${c.id}" aria-label="WhatsApp de ${esc(c.nome)}">${icon('whats')}</button>` : ''}
+      </div>`;
+  };
+  const draw = () => {
+    const t = semAcento(busca.value.trim().toLowerCase());
+    const dig = onlyDigits(t);
+    let list = rows.filter((r) => (filtroAtual === 'inativas' ? !r.ativo : r.ativo));
+    if (filtroAtual === 'aniv') list = list.filter((r) => r.data_nascimento && parseYmd(r.data_nascimento).getMonth() === mes)
+      .sort((a, b) => parseYmd(a.data_nascimento).getDate() - parseYmd(b.data_nascimento).getDate());
+    if (filtroAtual === 'novas') list = list.filter((r) => r.created_at >= d30).sort((a, b) => b.created_at.localeCompare(a.created_at));
+    if (t) list = list.filter((r) => semAcento(r.nome.toLowerCase()).includes(t) || (dig.length >= 3 && onlyDigits(r.telefone).includes(dig)));
+    if (!list.length) {
+      lista.innerHTML = `<div class="card empty">${icon('users')}<p>${t ? 'Nenhuma cliente encontrada nessa busca.' : rows.length ? 'Nenhuma cliente neste filtro.' : 'Nenhuma cliente cadastrada ainda.'}</p>${rows.length ? '' : `<button class="btn soft" id="empty-new">${icon('plus')} Cadastrar primeira cliente</button>`}</div>`;
+    } else if (filtroAtual === 'todas' || filtroAtual === 'inativas') {
+      // Agrupa por letra inicial
+      const grupos = {};
+      list.forEach((c) => { const l = semAcento(c.nome.trim()[0] || '#').toUpperCase(); (grupos[/[A-Z]/.test(l) ? l : '#'] ||= []).push(c); });
+      lista.innerHTML = Object.keys(grupos).sort().map((l) => `<div class="letter">${l}</div><div class="card pad-0"><div class="list">${grupos[l].map(item).join('')}</div></div>`).join('');
+    } else {
+      const titulo = filtroAtual === 'aniv' ? `Aniversariantes de ${new Date().toLocaleDateString('pt-BR', { month: 'long' })}` : 'Cadastradas nos últimos 30 dias';
+      lista.innerHTML = `<div class="letter" style="text-transform:none">${titulo}</div><div class="card pad-0"><div class="list">${list.map(item).join('')}</div></div>`;
+    }
     lista.querySelectorAll('[data-id]').forEach((r) => (r.onclick = () => go(`/cliente/${r.dataset.id}`)));
     lista.querySelectorAll('[data-wa]').forEach((b) => (b.onclick = (e) => {
       e.stopPropagation();
       const c = rows.find((x) => x.id === b.dataset.wa);
-      sendWhats(filtro === 'aniv' ? 'aniversario' : 'retorno', { cliente: c });
+      sendWhats(filtroAtual === 'aniv' || proxAniv(c) === 0 ? 'aniversario' : 'retorno', { cliente: c });
     }));
     lista.querySelector('#empty-new')?.addEventListener('click', novo);
   };
   busca.addEventListener('input', debounce(draw, 120));
-  view.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => go(`/clientes?f=${b.dataset.f}`)));
+  view.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => {
+    filtroAtual = b.dataset.f;
+    view.querySelectorAll('[data-f]').forEach((x) => x.classList.toggle('active', x === b));
+    history.replaceState(null, '', `#/clientes?f=${filtroAtual}`);
+    draw();
+  }));
   view.querySelector('#fab').onclick = novo;
   draw();
 }
@@ -87,7 +121,7 @@ export async function renderCliente(view, params, alive) {
   ]);
   if (!alive()) return;
 
-  setTopbar({ title: c.nome, back: '/clientes', actions: `<button class="icon-btn" id="tb-edit" aria-label="Editar">${icon('edit')}</button>` });
+  setTopbar({ title: 'Ficha da cliente', back: '/clientes', actions: `<button class="icon-btn" id="tb-edit" aria-label="Editar dados">${icon('edit')}</button>` });
   document.getElementById('tb-edit').onclick = () => openClienteForm(c).then((r) => r && reload());
 
   const now = new Date();
@@ -99,26 +133,40 @@ export async function renderCliente(view, params, alive) {
   const faltas = ags.filter((a) => a.status === 'faltou').length;
 
   const tabs = [
-    ['historico', `Histórico (${ags.length})`], ['anamnese', `Anamnese${anams.length ? ` (${anams.length})` : ''}`],
-    ['evolucao', 'Evolução'], ['pacotes', `Pacotes${pacotes.length ? ` (${pacotes.length})` : ''}`],
-    ...(admin ? [['financeiro', 'Financeiro']] : []), ['dados', 'Dados']
+    ['historico', 'Histórico', 'calendar', ags.length], ['anamnese', 'Anamnese', 'file', anams.length],
+    ['evolucao', 'Evolução', 'leaf', evols.length], ['pacotes', 'Pacotes', 'box', pacotes.length],
+    ...(admin ? [['financeiro', 'Finanças', 'wallet', 0]] : []), ['dados', 'Dados', 'user', 0]
   ];
+  const diasAniv = (() => {
+    if (!c.data_nascimento) return null;
+    const b = parseYmd(c.data_nascimento), h = new Date(); h.setHours(0, 0, 0, 0);
+    let n = new Date(h.getFullYear(), b.getMonth(), b.getDate()); if (n < h) n = new Date(h.getFullYear() + 1, b.getMonth(), b.getDate());
+    return Math.round((n - h) / 86400000);
+  })();
+  const acoes = [
+    c.telefone ? ['c-wa', 'whats', 'WhatsApp', 'wa'] : null,
+    c.telefone ? ['c-tel', 'phone', 'Ligar', ''] : null,
+    ['c-ag', 'calendar', 'Agendar', ''],
+    ['c-an', 'file', 'Anamnese', ''],
+    admin ? null : ['c-rec', 'wallet', 'Receber', '']
+  ].filter(Boolean);
 
   view.innerHTML = `
     <div class="card">
       <div class="profile-head">
         <div class="avatar lg">${esc(initials(c.nome))}</div>
-        <div class="grow">
-          <h2 class="display" style="font-size:22px">${esc(c.nome)}</h2>
+        <div class="grow" style="min-width:0">
+          <h2 class="display" style="font-size:22px;line-height:1.15">${esc(c.nome)}</h2>
           <div class="small muted">${c.data_nascimento ? `${age(c.data_nascimento)} anos · ` : ''}${esc(fmtPhone(c.telefone) || 'sem telefone')}</div>
-          ${!c.ativo ? '<span class="chip cancelado mt-s">Inativa</span>' : ''}
+          <div class="row wrap mt-s" style="gap:6px">
+            ${!c.ativo ? '<span class="chip cancelado">Inativa</span>' : ''}
+            ${diasAniv !== null && diasAniv <= 7 ? `<span class="chip pendente">🎂 Aniversário ${diasAniv === 0 ? 'hoje!' : diasAniv === 1 ? 'amanhã' : `em ${diasAniv} dias`}</span>` : ''}
+            ${faltas ? `<span class="chip cancelado">${faltas} falta${faltas > 1 ? 's' : ''}</span>` : ''}
+          </div>
         </div>
       </div>
-      <div class="row wrap mt" style="gap:8px">
-        <button class="btn sm whats" id="c-wa" ${c.telefone ? '' : 'disabled'}>${icon('whats')} WhatsApp</button>
-        ${c.telefone ? `<a class="btn sm ghost" href="tel:${onlyDigits(c.telefone)}">${icon('phone')} Ligar</a>` : ''}
-        <button class="btn sm primary" id="c-ag">${icon('calendar')} Agendar</button>
-        ${admin ? '' : `<button class="btn sm soft" id="c-rec">${icon('wallet')} Recebimento</button>`}
+      <div class="action-grid mt" style="grid-template-columns:repeat(${acoes.length},1fr)">
+        ${acoes.map(([idb, ic, lb, cls]) => `<button class="action ${cls}" id="${idb}"><span class="a-ico">${icon(ic)}</span>${lb}</button>`).join('')}
       </div>
       <div class="stat-row">
         <div><b>${concluidos.length}</b><span>atendimentos</span></div>
@@ -127,7 +175,6 @@ export async function renderCliente(view, params, alive) {
         : `<div><b>${concluidos[0] ? fmtDate(concluidos[0].inicio) : '—'}</b><span>última visita</span></div>
         <div><b>${futuros.length}</b><span>agendado(s)</span></div>`}
       </div>
-      ${faltas ? `<p class="small text-danger" style="margin:10px 0 0">⚠ ${faltas} falta${faltas > 1 ? 's' : ''} registrada${faltas > 1 ? 's' : ''}</p>` : ''}
     </div>
 
     ${alertas.length ? `<div class="card mt" style="background:var(--danger-soft);border-color:transparent;box-shadow:none">
@@ -141,13 +188,18 @@ export async function renderCliente(view, params, alive) {
       <div class="grow"><div class="li-title">${fmtDate(a.inicio)} às ${hm(new Date(a.inicio))}</div><div class="li-sub">${esc(a.servico?.nome || '')}</div></div>
       <span class="chip ${a.status}">${STATUS_LABEL[a.status]}</span></div>`).join('')}</div></div>` : ''}
 
-    <div class="tabs mt">${tabs.map(([k, v]) => `<button class="tab ${k === aba ? 'active' : ''}" data-aba="${k}">${v}</button>`).join('')}</div>
+    <nav class="ctabs mt" style="grid-template-columns:repeat(${tabs.length},1fr)" aria-label="Seções da ficha">
+      ${tabs.map(([k, v, ic, n]) => `<button class="${k === aba ? 'active' : ''}" data-aba="${k}">${icon(ic)}<span>${v}</span>${n ? `<i>${n}</i>` : ''}</button>`).join('')}
+    </nav>
     <div id="tab-body"></div>`;
 
-  view.querySelector('#c-wa').onclick = () => whatsMenu({ cliente: c, ...(futuros[0] || {}), cliente_id: c.id });
+  view.querySelector('#c-tel')?.addEventListener('click', () => { location.href = `tel:${onlyDigits(c.telefone)}`; });
+  const irParaAnamnese = () => { history.replaceState(null, '', `#/cliente/${id}?aba=anamnese`); reload(); };
+  view.querySelector('#c-an').onclick = () => openAnamneseForm(c).then((r) => r && irParaAnamnese());
+  if (view.querySelector('#c-wa')) view.querySelector('#c-wa').onclick = () => whatsMenu({ cliente: c, ...(futuros[0] || {}), cliente_id: c.id });
   view.querySelector('#c-ag').onclick = () => openAgendamentoForm({ cliente: c }).then((r) => r && reload());
   view.querySelector('#c-rec')?.addEventListener('click', () => openLancamentoForm(null, { cliente_id: id, descricao: `Atendimento — ${c.nome}` }));
-  view.querySelector('#c-anam-cta')?.addEventListener('click', () => openAnamneseForm(c).then((r) => r && go(`/cliente/${id}?aba=anamnese`)));
+  view.querySelector('#c-anam-cta')?.addEventListener('click', () => openAnamneseForm(c).then((r) => r && irParaAnamnese()));
   view.querySelectorAll('[data-aba]').forEach((b) => (b.onclick = () => history.replaceState(null, '', `#/cliente/${id}?aba=${b.dataset.aba}`) || renderTab(b.dataset.aba)));
   view.querySelectorAll('.list-item[data-ag]').forEach((r) => (r.onclick = () => {
     const a = ags.find((x) => x.id === r.dataset.ag);
@@ -170,7 +222,7 @@ export async function renderCliente(view, params, alive) {
     }
     if (t === 'anamnese') {
       body.innerHTML = `
-        <button class="btn primary mb" id="an-new">${icon('plus')} Nova ficha de anamnese</button>
+        <div class="sec-head"><span>${anams.length ? `${anams.length} ficha${anams.length > 1 ? 's' : ''}` : 'Fichas de anamnese'}</span><button class="btn sm primary" id="an-new">${icon('plus')} Nova ficha</button></div>
         ${anams.length ? anams.map((an, i) => `
           <div class="card ${i ? 'mt' : ''}">
             <div class="card-title"><h3>Ficha de ${fmtDate(an.data)} ${i === 0 ? '<span class="chip concluido">mais recente</span>' : ''}</h3>
@@ -206,7 +258,7 @@ export async function renderCliente(view, params, alive) {
     }
     if (t === 'pacotes') {
       body.innerHTML = `
-        ${admin ? `<button class="btn primary mb" id="pc-new">${icon('plus')} Vender pacote</button>` : ''}
+        <div class="sec-head"><span>Pacotes de sessões</span>${admin ? `<button class="btn sm primary" id="pc-new">${icon('plus')} Vender pacote</button>` : ''}</div>
         <div class="stack">${pacotes.map((p) => {
           const usadas = (p.agendamentos || []).filter((a) => a.status !== 'cancelado' && a.status !== 'faltou').length;
           const pct = Math.min(100, Math.round((usadas / p.total_sessoes) * 100));
@@ -228,8 +280,9 @@ export async function renderCliente(view, params, alive) {
     }
     if (t === 'financeiro') {
       body.innerHTML = `
-        <div class="row wrap mb" style="gap:8px"><button class="btn primary" id="lc-new">${icon('plus')} Lançar recebimento</button>
-          ${devendo ? `<button class="btn whats" id="cobrar">${icon('whats')} Cobrar ${money(devendo)}</button>` : ''}</div>
+        <div class="sec-head"><span>Pagamentos</span><div class="row" style="gap:6px">
+          ${devendo ? `<button class="btn sm whats" id="cobrar">${icon('whats')} Cobrar</button>` : ''}
+          <button class="btn sm primary" id="lc-new">${icon('plus')} Recebimento</button></div></div>
         <div class="card pad-0">${lancs.length ? `<div class="list">${lancs.map((l) => `
           <div class="list-item" data-l="${l.id}">
             <div class="grow"><div class="li-title">${esc(l.descricao)}</div>

@@ -10,9 +10,19 @@
  * e mostra as novidades depois de atualizar.
  * (Este arquivo também é lido pelo sw.js — não mude o formato.)
  */
-self.APP_VERSION = '1.4.1';
+self.APP_VERSION = '1.4.2';
 
 self.APP_CHANGELOG = [
+  {
+    versao: '1.4.2',
+    data: '2026-11-07',
+    itens: [
+      'Lista de clientes: filtros com contadores, separação por letra e aviso de aniversário próximo',
+      'Busca de clientes ignora acentos (ex.: "angela" encontra "Ângela")',
+      'Ficha da cliente: ações rápidas com ícones e abas que cabem na tela',
+      'Correção: ficha de anamnese nova aparece na hora, sem precisar sair da tela'
+    ]
+  },
   {
     versao: '1.4.1',
     data: '2026-11-07',
